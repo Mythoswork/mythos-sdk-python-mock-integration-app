@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+*.pyc
+data/listing-ids.json
+
+.env.local
+.env

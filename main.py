@@ -29,7 +29,11 @@ CREDITS_PER_CALCULATION = 1
 
 app = FastAPI()
 app.include_router(create_handshake_router())
-app.include_router(create_listing_callback_router(add_listing_id))
+app.add_api_route(
+    "/.well-known/mythos-listing-registered",
+    create_listing_callback_router(add_listing_id),
+    methods=["GET", "POST"],
+)
 
 
 def _bearer_token(authorization: str | None = Header(default=None)) -> str:

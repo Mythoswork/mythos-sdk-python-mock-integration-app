@@ -15,7 +15,7 @@ from mythos_sdk import (  # noqa: E402
     MythosSession,
     SessionNotFoundError,
     create_handshake_router,
-    create_listing_callback_router,
+    create_listing_callback_handler,
     report_usage,
     require_launch_token,
     verify_launch_token,
@@ -31,7 +31,7 @@ app = FastAPI()
 app.include_router(create_handshake_router())
 app.add_api_route(
     "/.well-known/mythos-listing-registered",
-    create_listing_callback_router(add_listing_id),
+    create_listing_callback_handler(add_listing_id),
     methods=["GET", "POST"],
 )
 

@@ -11,16 +11,12 @@ Not production code — a disposable dev/QA harness for validating the SDK's lau
 - **`/.well-known/mythos-handshake`**: liveness check the backend calls before publishing a listing.
 - **`/.well-known/mythos-listing-registered`**: callback the backend POSTs to on listing creation, so the app learns its own dynamic `listing_id` without a manual env var / redeploy.
 
-## Pre-charge confirmation (optional)
+## Pre-charge confirmation (required)
 
-For billable actions where the Consumer should explicitly approve a charge before it fires
-(e.g. a large or unusual credit spend), gate the client-side call to `/calculate` behind a
+Before firing any billable action, gate the client-side call to `/calculate` behind a
 `postMessage` round trip with the Mythos dashboard (`window.parent`), instead of calling it
-unconditionally. `/calculator`'s page script demonstrates this with a `confirmCharge()` helper,
-wired up behind a `requireConfirmation` checkbox in the UI, **checked by default** — unticking
-it is an explicit opt-out, not the starting state. Note that the harness's own standalone
-`Login → Launch` link opens `/calculator` directly, not embedded in an iframe, so it will hit
-the fail-closed path below unless the checkbox is unticked.
+unconditionally — the Consumer must explicitly approve every charge. `/calculator`'s page
+script demonstrates this with a `confirmCharge()` helper, wired up unconditionally in `calc()`.
 
 Protocol:
 
@@ -36,11 +32,12 @@ Protocol:
 Fail-closed: the charge is skipped (`/calculate` is never called) if the page isn't embedded,
 if no matching response arrives within the timeout (default `10000`ms), or if the response is
 `approved: false`. This depends entirely on the Mythos dashboard implementing the
-`mythos:confirm-charge` listener and confirmation UI on its side. Because `requireConfirmation`
-defaults to checked, **any dashboard that hasn't implemented the listener yet — or direct
-non-embedded access to `/calculator` — will see every charge silently declined**. Untick the
-checkbox to fall back to unconditional metering while your dashboard's listener is still in
-progress.
+`mythos:confirm-charge` listener and confirmation UI on its side. There is no opt-out — **any
+dashboard that hasn't implemented the listener yet, or any non-embedded access to
+`/calculator` (including this harness's own `Login → Launch` link, which opens the page
+directly, not in an iframe), will see every charge silently declined.** Testing the full
+confirm → charge path locally requires embedding `/calculator?lt=...` in a page that
+implements the listener yourself.
 
 ## Setup
 

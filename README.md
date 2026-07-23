@@ -17,9 +17,10 @@ For billable actions where the Consumer should explicitly approve a charge befor
 (e.g. a large or unusual credit spend), gate the client-side call to `/calculate` behind a
 `postMessage` round trip with the Mythos dashboard (`window.parent`), instead of calling it
 unconditionally. `/calculator`'s page script demonstrates this with a `confirmCharge()` helper,
-wired up behind a `requireConfirmation` checkbox in the UI — unchecked by default, so the
-harness's own standalone `Login → Launch` link (which opens `/calculator` directly, not
-embedded in an iframe) keeps working out of the box.
+wired up behind a `requireConfirmation` checkbox in the UI, **checked by default** — unticking
+it is an explicit opt-out, not the starting state. Note that the harness's own standalone
+`Login → Launch` link opens `/calculator` directly, not embedded in an iframe, so it will hit
+the fail-closed path below unless the checkbox is unticked.
 
 Protocol:
 
@@ -35,8 +36,11 @@ Protocol:
 Fail-closed: the charge is skipped (`/calculate` is never called) if the page isn't embedded,
 if no matching response arrives within the timeout (default `10000`ms), or if the response is
 `approved: false`. This depends entirely on the Mythos dashboard implementing the
-`mythos:confirm-charge` listener and confirmation UI on its side — with `requireConfirmation`
-unchecked (the default), behavior is unchanged: metering fires immediately.
+`mythos:confirm-charge` listener and confirmation UI on its side. Because `requireConfirmation`
+defaults to checked, **any dashboard that hasn't implemented the listener yet — or direct
+non-embedded access to `/calculator` — will see every charge silently declined**. Untick the
+checkbox to fall back to unconditional metering while your dashboard's listener is still in
+progress.
 
 ## Setup
 

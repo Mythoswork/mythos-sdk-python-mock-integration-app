@@ -169,7 +169,7 @@ _CALCULATOR_HTML = """
 <h2>Calculator</h2>
 <pre id="session"></pre>
 <label style="display:flex;align-items:center;gap:0.4rem;margin:0.75rem 0">
-<input id="requireConfirmation" type="checkbox"> Require confirmation before charging (<code>requireConfirmation</code>)
+<input id="requireConfirmation" type="checkbox" checked> Require confirmation before charging (<code>requireConfirmation</code>)
 </label>
 <input id="a" type="number" value="2"> <select id="op">
 <option value="add">+</option><option value="subtract">-</option>

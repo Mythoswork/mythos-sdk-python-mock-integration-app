@@ -182,9 +182,44 @@ fetch('/verify-session?lt=' + encodeURIComponent(lt)).then(r => r.json()).then(d
     window.parent.postMessage({ type: 'mythos:handshake' }, '*');
   }
 });
+function confirmCharge(credits, reason, timeoutMs) {
+  timeoutMs = timeoutMs || 10000;
+  return new Promise((resolve) => {
+    if (window === window.parent) { resolve(false); return; }
+    const requestId = crypto.randomUUID();
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      window.parent.postMessage({ type: 'mythos:confirm-charge-timeout', requestId }, '*');
+      cleanup();
+      resolve(false);
+    }, timeoutMs);
+    function onMessage(event) {
+      if (event.source !== window.parent) return;
+      const data = event.data;
+      if (!data || data.type !== 'mythos:confirm-charge-response' || data.requestId !== requestId) return;
+      cleanup();
+      resolve(!!data.approved);
+    }
+    function cleanup() {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      window.removeEventListener('message', onMessage);
+    }
+    window.addEventListener('message', onMessage);
+    window.parent.postMessage({ type: 'mythos:confirm-charge', requestId, credits, reason }, '*');
+  });
+}
 async function calc() {
   const body = {lt, operation: document.getElementById('op').value,
     a: Number(document.getElementById('a').value), b: Number(document.getElementById('b').value)};
+  const approved = await confirmCharge(1, body.operation + '(' + body.a + ', ' + body.b + ')');
+  if (!approved) {
+    document.getElementById('out').textContent =
+      'Charge declined, timed out, or the dashboard is not listening — check the console for details.';
+    return;
+  }
   const resp = await fetch('/calculate', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
   document.getElementById('out').textContent = JSON.stringify(await resp.json(), null, 2);
 }

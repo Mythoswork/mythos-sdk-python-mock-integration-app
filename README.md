@@ -11,6 +11,33 @@ Not production code — a disposable dev/QA harness for validating the SDK's lau
 - **`/.well-known/mythos-handshake`**: liveness check the backend calls before publishing a listing.
 - **`/.well-known/mythos-listing-registered`**: callback the backend POSTs to on listing creation, so the app learns its own dynamic `listing_id` without a manual env var / redeploy.
 
+## Pre-charge confirmation (optional)
+
+For billable actions where the Consumer should explicitly approve a charge before it fires
+(e.g. a large or unusual credit spend), gate the client-side call to `/calculate` behind a
+`postMessage` round trip with the Mythos dashboard (`window.parent`), instead of calling it
+unconditionally. `/calculator`'s page script demonstrates this with a `confirmCharge()` helper,
+wired up behind a `requireConfirmation` checkbox in the UI — unchecked by default, so the
+harness's own standalone `Login → Launch` link (which opens `/calculator` directly, not
+embedded in an iframe) keeps working out of the box.
+
+Protocol:
+
+```json
+// producer iframe -> window.parent
+{ "type": "mythos:confirm-charge", "requestId": "<uuid>", "credits": 1, "reason": "add(1, 2)" }
+// window.parent -> producer iframe
+{ "type": "mythos:confirm-charge-response", "requestId": "<uuid>", "approved": true }
+// on timeout, producer iframe -> window.parent (so the dashboard can close a stale prompt)
+{ "type": "mythos:confirm-charge-timeout", "requestId": "<uuid>" }
+```
+
+Fail-closed: the charge is skipped (`/calculate` is never called) if the page isn't embedded,
+if no matching response arrives within the timeout (default `10000`ms), or if the response is
+`approved: false`. This depends entirely on the Mythos dashboard implementing the
+`mythos:confirm-charge` listener and confirmation UI on its side — with `requireConfirmation`
+unchecked (the default), behavior is unchanged: metering fires immediately.
+
 ## Setup
 
 ```bash

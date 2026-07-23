@@ -168,6 +168,9 @@ _CALCULATOR_HTML = """
 <!doctype html><html><body style="font-family:monospace;max-width:640px;margin:2rem auto">
 <h2>Calculator</h2>
 <pre id="session"></pre>
+<label style="display:flex;align-items:center;gap:0.4rem;margin:0.75rem 0">
+<input id="requireConfirmation" type="checkbox"> Require confirmation before charging (<code>requireConfirmation</code>)
+</label>
 <input id="a" type="number" value="2"> <select id="op">
 <option value="add">+</option><option value="subtract">-</option>
 <option value="multiply">*</option><option value="divide">/</option>
@@ -214,10 +217,13 @@ function confirmCharge(credits, reason, timeoutMs) {
 async function calc() {
   const body = {lt, operation: document.getElementById('op').value,
     a: Number(document.getElementById('a').value), b: Number(document.getElementById('b').value)};
-  const approved = await confirmCharge(1, body.operation + '(' + body.a + ', ' + body.b + ')');
-  if (!approved) {
-    document.getElementById('out').textContent = 'Charge declined';
-    return;
+  if (document.getElementById('requireConfirmation').checked) {
+    const approved = await confirmCharge(1, body.operation + '(' + body.a + ', ' + body.b + ')');
+    if (!approved) {
+      document.getElementById('out').textContent =
+        'Charge declined, timed out, or the dashboard is not listening — check the console for details.';
+      return;
+    }
   }
   const resp = await fetch('/calculate', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
   document.getElementById('out').textContent = JSON.stringify(await resp.json(), null, 2);

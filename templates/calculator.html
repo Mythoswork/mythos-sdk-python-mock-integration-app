@@ -1,0 +1,93 @@
+<!doctype html><html><head><link rel="stylesheet" href="https://cdn.simplecss.org/simple.min.css"></head><body>
+<h2>Calculator</h2>
+<pre id="session"></pre>
+<input id="a" type="number" value="2"> <select id="op">
+<option value="add">+</option><option value="subtract">-</option>
+<option value="multiply">*</option><option value="divide">/</option>
+</select> <input id="b" type="number" value="3">
+<button onclick="calc()">=</button>
+<pre id="out"></pre>
+<hr>
+<h3>Upload file</h3>
+<input id="file" type="file">
+<button onclick="upload()">Upload</button>
+<pre id="uploadOut"></pre>
+<h3>Files in tmp</h3>
+<ul id="fileList">
+{% for name in files %}
+  <li><a href="/download/{{ name }}">{{ name }}</a></li>
+{% else %}
+  <li>No files uploaded yet.</li>
+{% endfor %}
+</ul>
+<script>
+async function upload() {
+  const fileInput = document.getElementById('file');
+  const uploadOut = document.getElementById('uploadOut');
+  if (!fileInput.files.length) {
+    uploadOut.textContent = 'Choose a file first.';
+    return;
+  }
+  const formData = new FormData();
+  formData.append('file', fileInput.files[0]);
+  const resp = await fetch('/upload', {method: 'POST', body: formData});
+  uploadOut.textContent = JSON.stringify(await resp.json(), null, 2);
+  await refreshFileList();
+}
+async function refreshFileList() {
+  const { data: files } = await fetch('/files').then(r => r.json());
+  const fileList = document.getElementById('fileList');
+  fileList.innerHTML = files.length
+    ? files.map(name => `<li><a href="/download/${encodeURIComponent(name)}">${name}</a></li>`).join('')
+    : '<li>No files uploaded yet.</li>';
+}
+const lt = new URLSearchParams(location.search).get('lt');
+fetch('/verify-session?lt=' + encodeURIComponent(lt)).then(r => r.json()).then(d => {
+  document.getElementById('session').textContent = 'verify-session: ' + JSON.stringify(d, null, 2);
+  if (d.success) {
+    window.parent.postMessage({ type: 'mythos:handshake' }, '*');
+  }
+});
+function confirmCharge(credits, reason, timeoutMs) {
+  timeoutMs = timeoutMs || 10000;
+  return new Promise((resolve) => {
+    if (window === window.parent) { resolve(false); return; }
+    const requestId = crypto.randomUUID();
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      window.parent.postMessage({ type: 'mythos:confirm-charge-timeout', requestId }, '*');
+      cleanup();
+      resolve(false);
+    }, timeoutMs);
+    function onMessage(event) {
+      if (event.source !== window.parent) return;
+      const data = event.data;
+      if (!data || data.type !== 'mythos:confirm-charge-response' || data.requestId !== requestId) return;
+      cleanup();
+      resolve(!!data.approved);
+    }
+    function cleanup() {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      window.removeEventListener('message', onMessage);
+    }
+    window.addEventListener('message', onMessage);
+    window.parent.postMessage({ type: 'mythos:confirm-charge', requestId, credits, reason }, '*');
+  });
+}
+async function calc() {
+  const body = {lt, operation: document.getElementById('op').value,
+    a: Number(document.getElementById('a').value), b: Number(document.getElementById('b').value)};
+  const approved = await confirmCharge(1, body.operation + '(' + body.a + ', ' + body.b + ')');
+  if (!approved) {
+    document.getElementById('out').textContent =
+      'Charge declined, timed out, or the dashboard is not listening — check the console for details.';
+    return;
+  }
+  const resp = await fetch('/calculate', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+  document.getElementById('out').textContent = JSON.stringify(await resp.json(), null, 2);
+}
+</script>
+</body></html>

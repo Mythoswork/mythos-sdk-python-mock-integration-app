@@ -638,6 +638,7 @@ source = { editable = "." }
 dependencies = [
     { name = "fastapi", extra = ["standard"] },
     { name = "httpx" },
+    { name = "jinja2" },
     { name = "mythos-sdk", extra = ["fastapi"] },
     { name = "python-dotenv" },
     { name = "uvicorn" },
@@ -647,6 +648,7 @@ dependencies = [
 requires-dist = [
     { name = "fastapi", extras = ["standard"], specifier = ">=0.100.0" },
     { name = "httpx", specifier = ">=0.27.0" },
+    { name = "jinja2", specifier = ">=3.1.0" },
     { name = "mythos-sdk", extras = ["fastapi"], specifier = ">=0.0.7" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
     { name = "uvicorn", specifier = ">=0.30.0" },

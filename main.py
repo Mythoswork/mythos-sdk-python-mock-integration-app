@@ -1,3 +1,4 @@
+import json
 from dataclasses import asdict
 from pathlib import Path
 from typing import Literal
@@ -141,7 +142,7 @@ _HARNESS_HTML = """
 async function run() {
   const out = document.getElementById('out');
   const login = await fetch('/harness/login', {method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({email: '__EMAIL__', password: '__PASSWORD__'})}).then(r => r.json());
+    body: JSON.stringify({email: __EMAIL__, password: __PASSWORD__})}).then(r => r.json());
   out.textContent = 'login: ' + JSON.stringify(login, null, 2);
   if (!login.success) return;
   const token = login.data.token;
@@ -150,9 +151,19 @@ async function run() {
   const launch = await fetch('/harness/launch', {method:'POST', headers:{Authorization: 'Bearer ' + token}}).then(r => r.json());
   out.textContent += '\\nlaunch: ' + JSON.stringify(launch, null, 2);
   if (launch.success) {
-    out.innerHTML += '<br><a href="/calculator?lt=' + encodeURIComponent(launch.data.launch_token) + '">Open calculator</a>';
+    const frame = document.createElement('iframe');
+    frame.src = '/calculator?lt=' + encodeURIComponent(launch.data.launch_token);
+    frame.setAttribute('style', 'width:100%;height:340px;border:1px solid #ccc;margin-top:1rem');
+    document.body.appendChild(frame);
   }
 }
+window.addEventListener('message', (event) => {
+  if (event.origin !== window.location.origin) return;
+  const data = event.data;
+  if (!data || data.type !== 'mythos:confirm-charge' || !event.source) return;
+  const approved = window.confirm('Approve ' + data.credits + ' credit(s) for ' + data.reason + '?');
+  event.source.postMessage({type: 'mythos:confirm-charge-response', requestId: data.requestId, approved}, window.location.origin);
+});
 </script>
 </body></html>
 """
@@ -161,7 +172,9 @@ async function run() {
 @app.get("/", response_class=HTMLResponse)
 async def index_page():
     config = get_config()
-    return _HARNESS_HTML.replace("__EMAIL__", config.test_user_email).replace("__PASSWORD__", config.test_user_password)
+    return _HARNESS_HTML.replace("__EMAIL__", json.dumps(config.test_user_email)).replace(
+        "__PASSWORD__", json.dumps(config.test_user_password)
+    )
 
 
 _CALCULATOR_HTML = """

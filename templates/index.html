@@ -1,0 +1,39 @@
+<!doctype html><html><head><link rel="stylesheet" href="https://cdn.simplecss.org/simple.min.css"></head><body>
+<h2>Mythos Calculator Mockup (Python)</h2>
+<button onclick="run()">Login &rarr; Launch</button>
+<pre id="out"></pre>
+<hr>
+<h3>Upload file</h3>
+<input id="file" type="file">
+<button onclick="upload()">Upload</button>
+<pre id="uploadOut"></pre>
+<script>
+async function upload() {
+  const fileInput = document.getElementById('file');
+  const uploadOut = document.getElementById('uploadOut');
+  if (!fileInput.files.length) {
+    uploadOut.textContent = 'Choose a file first.';
+    return;
+  }
+  const formData = new FormData();
+  formData.append('file', fileInput.files[0]);
+  const resp = await fetch('/upload', {method: 'POST', body: formData});
+  uploadOut.textContent = JSON.stringify(await resp.json(), null, 2);
+}
+async function run() {
+  const out = document.getElementById('out');
+  const login = await fetch('/harness/login', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({email: '{{ email }}', password: '{{ password }}'})}).then(r => r.json());
+  out.textContent = 'login: ' + JSON.stringify(login, null, 2);
+  if (!login.success) return;
+  const token = login.data.token;
+  const wallet = await fetch('/harness/wallet', {headers:{Authorization: 'Bearer ' + token}}).then(r => r.json());
+  out.textContent += '\nwallet: ' + JSON.stringify(wallet, null, 2);
+  const launch = await fetch('/harness/launch', {method:'POST', headers:{Authorization: 'Bearer ' + token}}).then(r => r.json());
+  out.textContent += '\nlaunch: ' + JSON.stringify(launch, null, 2);
+  if (launch.success) {
+    out.innerHTML += '<br><a href="/calculator?lt=' + encodeURIComponent(launch.data.launch_token) + '">Open calculator</a>';
+  }
+}
+</script>
+</body></html>

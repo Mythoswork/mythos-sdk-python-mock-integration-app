@@ -2,6 +2,7 @@
 __pycache__/
 *.pyc
 data/listing-ids.json
+tmp/
 
 .env.local
 .env

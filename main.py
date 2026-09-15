@@ -6,8 +6,9 @@ from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).parent / ".env.local")
 
-from fastapi import Depends, FastAPI, Header, HTTPException  # noqa: E402
-from fastapi.responses import HTMLResponse  # noqa: E402
+from fastapi import Depends, FastAPI, File, Header, HTTPException, Request, UploadFile  # noqa: E402
+from fastapi.responses import FileResponse, HTMLResponse  # noqa: E402
+from fastapi.templating import Jinja2Templates  # noqa: E402
 from pydantic import BaseModel  # noqa: E402
 
 from mythos_sdk import (  # noqa: E402
@@ -26,6 +27,10 @@ from listing_ids_store import add_listing_id, get_listing_ids  # noqa: E402
 from mythos_client import get_launch_history, get_wallet, launch_app, login  # noqa: E402
 
 CREDITS_PER_CALCULATION = 1
+TMP_DIR = Path(__file__).parent / "tmp"
+TEMPLATES_DIR = Path(__file__).parent / "templates"
+
+templates = Jinja2Templates(directory=TEMPLATES_DIR)
 
 app = FastAPI()
 app.include_router(create_handshake_router())
@@ -132,102 +137,49 @@ async def harness_launch_history_route(bearer_token: str = Depends(_bearer_token
         raise HTTPException(status_code=502, detail=str(e))
 
 
-_HARNESS_HTML = """
-<!doctype html><html><body style="font-family:monospace;max-width:640px;margin:2rem auto">
-<h2>Mythos Calculator Mockup (Python)</h2>
-<button onclick="run()">Login &rarr; Launch</button>
-<pre id="out"></pre>
-<script>
-async function run() {
-  const out = document.getElementById('out');
-  const login = await fetch('/harness/login', {method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({email: '__EMAIL__', password: '__PASSWORD__'})}).then(r => r.json());
-  out.textContent = 'login: ' + JSON.stringify(login, null, 2);
-  if (!login.success) return;
-  const token = login.data.token;
-  const wallet = await fetch('/harness/wallet', {headers:{Authorization: 'Bearer ' + token}}).then(r => r.json());
-  out.textContent += '\\nwallet: ' + JSON.stringify(wallet, null, 2);
-  const launch = await fetch('/harness/launch', {method:'POST', headers:{Authorization: 'Bearer ' + token}}).then(r => r.json());
-  out.textContent += '\\nlaunch: ' + JSON.stringify(launch, null, 2);
-  if (launch.success) {
-    out.innerHTML += '<br><a href="/calculator?lt=' + encodeURIComponent(launch.data.launch_token) + '">Open calculator</a>';
-  }
-}
-</script>
-</body></html>
-"""
+@app.post("/upload")
+async def upload_route(file: UploadFile = File(...)):
+    TMP_DIR.mkdir(parents=True, exist_ok=True)
+    filename = Path(file.filename or "upload").name
+    dest = TMP_DIR / filename
+    contents = await file.read()
+    dest.write_bytes(contents)
+    return {"success": True, "data": {"filename": filename, "size": len(contents)}}
+
+
+def _list_tmp_files() -> list[str]:
+    if not TMP_DIR.is_dir():
+        return []
+    return sorted(p.name for p in TMP_DIR.iterdir() if p.is_file())
+
+
+@app.get("/files")
+async def list_files_route():
+    return {"success": True, "data": _list_tmp_files()}
+
+
+@app.get("/download/{filename}")
+async def download_file_route(filename: str):
+    dest = (TMP_DIR / filename).resolve()
+    if dest.parent != TMP_DIR.resolve() or not dest.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+    return FileResponse(dest, filename=dest.name)
 
 
 @app.get("/", response_class=HTMLResponse)
-async def index_page():
+async def index_page(request: Request):
     config = get_config()
-    return _HARNESS_HTML.replace("__EMAIL__", config.test_user_email).replace("__PASSWORD__", config.test_user_password)
-
-
-_CALCULATOR_HTML = """
-<!doctype html><html><body style="font-family:monospace;max-width:640px;margin:2rem auto">
-<h2>Calculator</h2>
-<pre id="session"></pre>
-<input id="a" type="number" value="2"> <select id="op">
-<option value="add">+</option><option value="subtract">-</option>
-<option value="multiply">*</option><option value="divide">/</option>
-</select> <input id="b" type="number" value="3">
-<button onclick="calc()">=</button>
-<pre id="out"></pre>
-<script>
-const lt = new URLSearchParams(location.search).get('lt');
-fetch('/verify-session?lt=' + encodeURIComponent(lt)).then(r => r.json()).then(d => {
-  document.getElementById('session').textContent = 'verify-session: ' + JSON.stringify(d, null, 2);
-  if (d.success) {
-    window.parent.postMessage({ type: 'mythos:handshake' }, '*');
-  }
-});
-function confirmCharge(credits, reason, timeoutMs) {
-  timeoutMs = timeoutMs || 10000;
-  return new Promise((resolve) => {
-    if (window === window.parent) { resolve(false); return; }
-    const requestId = crypto.randomUUID();
-    let settled = false;
-    const timer = setTimeout(() => {
-      if (settled) return;
-      window.parent.postMessage({ type: 'mythos:confirm-charge-timeout', requestId }, '*');
-      cleanup();
-      resolve(false);
-    }, timeoutMs);
-    function onMessage(event) {
-      if (event.source !== window.parent) return;
-      const data = event.data;
-      if (!data || data.type !== 'mythos:confirm-charge-response' || data.requestId !== requestId) return;
-      cleanup();
-      resolve(!!data.approved);
-    }
-    function cleanup() {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      window.removeEventListener('message', onMessage);
-    }
-    window.addEventListener('message', onMessage);
-    window.parent.postMessage({ type: 'mythos:confirm-charge', requestId, credits, reason }, '*');
-  });
-}
-async function calc() {
-  const body = {lt, operation: document.getElementById('op').value,
-    a: Number(document.getElementById('a').value), b: Number(document.getElementById('b').value)};
-  const approved = await confirmCharge(1, body.operation + '(' + body.a + ', ' + body.b + ')');
-  if (!approved) {
-    document.getElementById('out').textContent =
-      'Charge declined, timed out, or the dashboard is not listening — check the console for details.';
-    return;
-  }
-  const resp = await fetch('/calculate', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
-  document.getElementById('out').textContent = JSON.stringify(await resp.json(), null, 2);
-}
-</script>
-</body></html>
-"""
+    return templates.TemplateResponse(
+        request=request,
+        name="index.html",
+        context={"email": config.test_user_email, "password": config.test_user_password},
+    )
 
 
 @app.get("/calculator", response_class=HTMLResponse)
-async def calculator_page():
-    return _CALCULATOR_HTML
+async def calculator_page(request: Request):
+    return templates.TemplateResponse(
+        request=request,
+        name="calculator.html",
+        context={"files": _list_tmp_files()},
+    )

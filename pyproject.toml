@@ -21,3 +21,6 @@ allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
 bypass-selection = true
+
+[tool.uv.sources]
+mythos-sdk = { path = "../mythos-sdk/packages/python" }

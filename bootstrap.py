@@ -28,6 +28,7 @@ async def main() -> None:
         status="published",
         cover_image="https://example.com/calculator-cover.png",
         price_credits=1,
+        producer_margin_pct=100,
     )
 
     listing_id = listing["listing_id"]

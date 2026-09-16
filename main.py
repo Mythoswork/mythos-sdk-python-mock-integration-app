@@ -1,3 +1,4 @@
+import os
 from dataclasses import asdict
 from pathlib import Path
 from typing import Literal
@@ -6,14 +7,19 @@ from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).parent / ".env.local")
 
-from fastapi import Depends, FastAPI, File, Header, HTTPException, Request, UploadFile  # noqa: E402
+from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, Request, UploadFile  # noqa: E402
 from fastapi.responses import FileResponse, HTMLResponse  # noqa: E402
 from fastapi.templating import Jinja2Templates  # noqa: E402
+from jose.exceptions import JOSEError  # noqa: E402
 from pydantic import BaseModel  # noqa: E402
 
 from mythos_sdk import (  # noqa: E402
     InsufficientFundsError,
+    InvalidLaunchTokenError,
+    get_llm_billing_metadata,
+    llm,
     MythosSession,
+    MythosConfigError,
     SessionNotFoundError,
     create_handshake_router,
     create_listing_callback_handler,
@@ -25,8 +31,11 @@ from mythos_sdk import (  # noqa: E402
 from config import get_config, require_listing_id  # noqa: E402
 from listing_ids_store import add_listing_id, get_listing_ids  # noqa: E402
 from mythos_client import get_launch_history, get_wallet, launch_app, login  # noqa: E402
+from mythos_session_store import get_mythos_session, remember_mythos_session  # noqa: E402
 
 CREDITS_PER_CALCULATION = 1
+PRODUCER_OPENAI_API_KEY = os.environ.get('PRODUCER_OPENAI_API_KEY')
+MODEL_ID = os.environ.get('ALPHA_MODEL_ID', 'openai/gpt-4o-mini')
 TMP_DIR = Path(__file__).parent / "tmp"
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 
@@ -49,9 +58,18 @@ def _bearer_token(authorization: str | None = Header(default=None)) -> str:
 
 @app.get("/verify-session")
 async def verify_session_route(
+    lt: str = Query(..., alias="lt"),
     session: MythosSession = Depends(require_launch_token(resolve_listing_ids=get_listing_ids)),
 ):
-    return {"success": True, "data": asdict(session)}
+    remember_mythos_session(lt, session)
+    public_session = MythosSession(
+        userId=session.userId,
+        email=session.email,
+        displayName=session.displayName,
+        listingId=session.listingId,
+        sessionJti=session.sessionJti,
+    )
+    return {"success": True, "data": asdict(public_session)}
 
 
 class CalculateBody(BaseModel):
@@ -59,6 +77,11 @@ class CalculateBody(BaseModel):
     operation: Literal["add", "subtract", "multiply", "divide"]
     a: float
     b: float
+
+
+class ChatBody(BaseModel):
+    lt: str
+    message: str
 
 
 def _compute(operation: str, a: float, b: float) -> float:
@@ -89,6 +112,54 @@ async def calculate_route(body: CalculateBody):
         raise
     except Exception as e:
         raise HTTPException(status_code=401, detail=str(e))
+
+
+@app.post("/chat")
+async def chat_route(body: ChatBody):
+    if not PRODUCER_OPENAI_API_KEY:
+        raise HTTPException(
+            status_code=500,
+            detail="Server misconfigured: PRODUCER_OPENAI_API_KEY not set",
+        )
+    if not body.message.strip():
+        raise HTTPException(status_code=400, detail="Message is required")
+
+    try:
+        verified_session = await verify_launch_token(body.lt, resolve_listing_ids=get_listing_ids)
+        session = get_mythos_session(body.lt)
+        if session is None or session.sessionJti != verified_session.sessionJti:
+            raise HTTPException(status_code=401, detail="Mythos session is not initialized")
+
+        client = llm(session, api_key=PRODUCER_OPENAI_API_KEY)
+        completion = await client.chat.completions.create(
+            model=MODEL_ID,
+            messages=[{"role": "user", "content": body.message.strip()}],
+            stream=False,
+        )
+        billing = get_llm_billing_metadata(completion)
+
+        return {
+            "success": True,
+            "data": {
+                "reply": completion.choices[0].message.content if completion.choices else None,
+                "creditsCharged": billing.get("mythos_charge_credits") if billing else None,
+                "mythosCostMicrounits": billing.get("mythos_cost_microunits") if billing else None,
+                "mythosPricingSource": billing.get("mythos_pricing_source") if billing else None,
+                "billingStatus": billing.get("mythos_billing_status") if billing else None,
+            },
+        }
+    except InsufficientFundsError:
+        raise HTTPException(status_code=402, detail="Insufficient funds")
+    except SessionNotFoundError:
+        raise HTTPException(status_code=404, detail="Session not found")
+    except MythosConfigError:
+        raise HTTPException(status_code=500, detail="Chat service is misconfigured")
+    except (InvalidLaunchTokenError, JOSEError):
+        raise HTTPException(status_code=401, detail="Invalid launch token")
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=502, detail="Chat request failed")
 
 
 class LoginBody(BaseModel):

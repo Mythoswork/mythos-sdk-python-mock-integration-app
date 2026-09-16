@@ -2,12 +2,12 @@
 
 Python (FastAPI) Producer-role harness exercising [`mythos-sdk`](https://github.com/Mythoswork/mythos-sdk) end-to-end against a locally running `mythos-backend`. Functional twin of the Node/Next.js `mythos-calculator-mockup` app — same flow, FastAPI instead of Next.js.
 
-Not production code — a disposable dev/QA harness for validating the SDK's launch → handshake → consume → meter loop, and the dynamic listing-registered callback.
+Not production code — a disposable dev/QA harness for validating the SDK's launch → handshake → consume → meter loop, SDK-owned LLM inference, and the dynamic listing-registered callback.
 
 ## What it does
 
 - **Harness routes** (`/`, `/harness/*`): login as a Mythos test user, launch the calculator listing, inspect wallet balance and launch history.
-- **Producer routes** (`/calculator`, `/verify-session`, `/calculate`): the SDK-integrated side — verifies the launch token once, consumes the session, then meters one credit per calculation via `report_usage`.
+- **Producer routes** (`/calculator`, `/verify-session`, `/calculate`, `/chat`): the SDK-integrated side — meters one credit per calculation via `report_usage`, and routes LLM inference through `llm` with observed-cost billing metadata.
 - **`/.well-known/mythos-handshake`**: liveness check the backend calls before publishing a listing.
 - **`/.well-known/mythos-listing-registered`**: callback the backend POSTs to on listing creation, so the app learns its own dynamic `listing_id` without a manual env var / redeploy.
 
@@ -38,6 +38,26 @@ dashboard that hasn't implemented the listener yet, or any non-embedded access t
 directly, not in an iframe), will see every charge silently declined.** Testing the full
 confirm → charge path locally requires embedding `/calculator?lt=...` in a page that
 implements the listener yourself.
+
+## LLM inference
+
+LLM inference does not use `report_usage` or a client-supplied credit amount. The server validates
+the launch token, retrieves the identity-bearing session from its server-side cache, and creates
+the official async OpenAI client:
+
+```python
+from mythos_sdk import get_llm_billing_metadata, llm
+
+client = llm(session, api_key=producer_openai_api_key)
+completion = await client.chat.completions.create(
+    model="openai/gpt-4o-mini",
+    messages=[{"role": "user", "content": message}],
+)
+billing = get_llm_billing_metadata(completion)
+```
+
+The gateway observes provider usage, settles the charge, and returns billing metadata. Identity
+credentials are never sent to the browser.
 
 ## Setup
 

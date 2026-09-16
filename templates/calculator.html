@@ -8,6 +8,12 @@
 <button onclick="calc()">=</button>
 <pre id="out"></pre>
 <hr>
+<h3>Chat</h3>
+<div id="chatLog" style="white-space:pre-wrap;border:1px solid #ccc;padding:0.5rem;min-height:100px;"></div>
+<input id="chatInput" type="text" placeholder="Say something...">
+<button onclick="sendChat()">Send</button>
+<pre id="chatCostOut"></pre>
+<hr>
 <h3>Upload file</h3>
 <input id="file" type="file">
 <button onclick="upload()">Upload</button>
@@ -42,9 +48,11 @@ async function refreshFileList() {
     : '<li>No files uploaded yet.</li>';
 }
 const lt = new URLSearchParams(location.search).get('lt');
+let session = null;
 fetch('/verify-session?lt=' + encodeURIComponent(lt)).then(r => r.json()).then(d => {
   document.getElementById('session').textContent = 'verify-session: ' + JSON.stringify(d, null, 2);
   if (d.success) {
+    session = d.data;
     window.parent.postMessage({ type: 'mythos:handshake' }, '*');
   }
 });
@@ -88,6 +96,37 @@ async function calc() {
   }
   const resp = await fetch('/calculate', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
   document.getElementById('out').textContent = JSON.stringify(await resp.json(), null, 2);
+}
+async function sendChat() {
+  const input = document.getElementById('chatInput');
+  const chatLog = document.getElementById('chatLog');
+  const message = input.value.trim();
+  if (!message || !session) {
+    chatLog.textContent = '[Chat is unavailable until the Mythos session is verified.]';
+    return;
+  }
+
+  chatLog.textContent += (chatLog.textContent ? '\n' : '') + 'You: ' + message;
+  input.value = '';
+  try {
+    const resp = await fetch('/chat', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({lt, message}),
+    });
+    const body = await resp.json();
+    if (!resp.ok || !body.success) {
+      chatLog.textContent += '\n[error: ' + (body.detail || body.error || 'Chat request failed') + ']';
+      return;
+    }
+    chatLog.textContent += '\nAssistant: ' + (body.data.reply || '');
+    document.getElementById('chatCostOut').textContent =
+      'credits charged: ' + (body.data.creditsCharged ?? 'pending') +
+      ' | real Mythos cost: ' + (body.data.mythosCostMicrounits || 'unavailable') +
+      ' microunits (' + (body.data.mythosPricingSource || 'unavailable') + ')';
+  } catch {
+    chatLog.textContent += '\n[error: Chat request failed]';
+  }
 }
 </script>
 </body></html>

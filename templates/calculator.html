@@ -1,4 +1,21 @@
 <!doctype html><html><head><link rel="stylesheet" href="https://cdn.simplecss.org/simple.min.css"></head><body>
+
+<div id="standaloneLogin" style="display:none">
+  <h2>Standalone Calculator</h2>
+  <p>No Mythos session detected. Log in with this app's own account.</p>
+  <p id="standaloneLoginError" style="color:red"></p>
+  <input id="standaloneUsername" placeholder="username">
+  <input id="standalonePassword" type="password" placeholder="password">
+  <button onclick="handleStandaloneLogin()">Log in</button>
+</div>
+
+<div id="standalonePaywall" style="display:none">
+  <h2>Subscribe to use the calculator</h2>
+  <p>This app's own paywall — not Mythos. $9.99/mo, fake checkout for this demo.</p>
+  <button onclick="handleStandaloneSubscribe()">Subscribe</button>
+</div>
+
+<div id="mainContent" style="display:none">
 <h2>Calculator</h2>
 <pre id="session"></pre>
 <input id="a" type="number" value="2"> <select id="op">
@@ -26,6 +43,8 @@
   <li>No files uploaded yet.</li>
 {% endfor %}
 </ul>
+</div>
+
 <script>
 async function upload() {
   const fileInput = document.getElementById('file');
@@ -47,17 +66,62 @@ async function refreshFileList() {
     ? files.map(name => `<li><a href="/download/${encodeURIComponent(name)}">${name}</a></li>`).join('')
     : '<li>No files uploaded yet.</li>';
 }
+// Fake standalone SaaS credentials -- this is a demo gate only, not real auth.
+const STANDALONE_USERNAME = 'demo';
+const STANDALONE_PASSWORD = 'demo';
+
+function showEl(id) { document.getElementById(id).style.display = ''; }
+function hideEl(id) { document.getElementById(id).style.display = 'none'; }
+
+function showStandaloneLogin() {
+  hideEl('standalonePaywall'); hideEl('mainContent'); showEl('standaloneLogin');
+}
+function showStandalonePaywall() {
+  hideEl('standaloneLogin'); hideEl('mainContent'); showEl('standalonePaywall');
+}
+function showMainContent() {
+  hideEl('standaloneLogin'); hideEl('standalonePaywall'); showEl('mainContent');
+}
+
+function handleStandaloneLogin() {
+  const username = document.getElementById('standaloneUsername').value;
+  const password = document.getElementById('standalonePassword').value;
+  if (username === STANDALONE_USERNAME && password === STANDALONE_PASSWORD) {
+    document.getElementById('standaloneLoginError').textContent = '';
+    showStandalonePaywall();
+  } else {
+    document.getElementById('standaloneLoginError').textContent = 'Invalid username or password.';
+  }
+}
+
+function handleStandaloneSubscribe() {
+  showMainContent();
+}
+
 const lt = new URLSearchParams(location.search).get('lt');
 let session = null;
-fetch('/verify-session?lt=' + encodeURIComponent(lt)).then(r => r.json()).then(d => {
+// No `lt` is fine here -- an existing session cookie (from a prior visit) already covers
+// it; /verify-session checks that cookie before ever needing `lt`. Only pass `lt` when
+// it's actually present, since the query string literally sending "null" would otherwise
+// make a valid cookie session look like an invalid launch token server-side.
+const verifyUrl = lt ? '/verify-session?lt=' + encodeURIComponent(lt) : '/verify-session';
+fetch(verifyUrl).then(r => r.json()).then(d => {
   document.getElementById('session').textContent = 'verify-session: ' + JSON.stringify(d, null, 2);
   if (d.success) {
     session = d.data;
     window.parent.postMessage({ type: 'mythos:handshake' }, '*');
+    showMainContent();
+  } else {
+    // Standalone (no Mythos at all): no `lt`, and no session cookie from a prior visit
+    // either. This app's own account gate is all that stands between here and using the
+    // calculator/chat -- there is nothing for Mythos to bypass, because Mythos was never
+    // involved.
+    showStandaloneLogin();
   }
 });
-function confirmCharge(credits, reason, timeoutMs) {
+function confirmCharge(credits, reason, timeoutMs, kind) {
   timeoutMs = timeoutMs || 10000;
+  kind = kind || 'generic';
   return new Promise((resolve) => {
     if (window === window.parent) { resolve(false); return; }
     const requestId = crypto.randomUUID();
@@ -82,10 +146,38 @@ function confirmCharge(credits, reason, timeoutMs) {
       window.removeEventListener('message', onMessage);
     }
     window.addEventListener('message', onMessage);
-    window.parent.postMessage({ type: 'mythos:confirm-charge', requestId, credits, reason }, '*');
+    window.parent.postMessage({ type: 'mythos:confirm-charge', requestId, credits, reason, kind }, '*');
   });
 }
+
+// Chars-per-credit for the confirm-charge modal's reminder amount -- deliberately coarse
+// (not a real token-cost model), matching the Node mockup's lib/pricing.ts. The real LLM
+// cost is only known after the provider responds and is already billed automatically by
+// /chat via the SDK's wallet hold; this number exists purely so the dialog isn't a
+// hardcoded stub -- a longer message reads as "this will cost a bit more."
+function estimateChatCredits(message) {
+  const byLength = Math.ceil(message.length / 40);
+  return Math.min(10, Math.max(1, byLength));
+}
+function standaloneCalculate() {
+  const operation = document.getElementById('op').value;
+  const a = Number(document.getElementById('a').value);
+  const b = Number(document.getElementById('b').value);
+  let value;
+  if (operation === 'add') value = a + b;
+  else if (operation === 'subtract') value = a - b;
+  else if (operation === 'multiply') value = a * b;
+  else value = a / b;
+  document.getElementById('out').textContent = 'Result: ' + value + ' (standalone -- no Mythos credits used)';
+}
+
 async function calc() {
+  // Standalone (no Mythos session at all): compute locally, no API call, no credits --
+  // there is nothing for Mythos to bill, because Mythos was never involved.
+  if (!session) {
+    standaloneCalculate();
+    return;
+  }
   const body = {lt, operation: document.getElementById('op').value,
     a: Number(document.getElementById('a').value), b: Number(document.getElementById('b').value)};
   const approved = await confirmCharge(1, body.operation + '(' + body.a + ', ' + body.b + ')');
@@ -101,18 +193,33 @@ async function sendChat() {
   const input = document.getElementById('chatInput');
   const chatLog = document.getElementById('chatLog');
   const message = input.value.trim();
-  if (!message || !session) {
-    chatLog.textContent = '[Chat is unavailable until the Mythos session is verified.]';
-    return;
+  if (!message) return;
+
+  // Same confirm-charge modal the calculator button already uses, tagged 'llm' so the
+  // dashboard shows the no-fixed-amount usage-based variant instead of a projected
+  // credit count. The credits number here is a rough, message-length-based reminder, not
+  // a projection of the real LLM cost (that's only known after the provider responds,
+  // and is already billed automatically by /chat via the SDK's wallet hold). Skipped
+  // entirely in standalone mode (no `session`), same as the calculator button's precedent.
+  if (session) {
+    const approved = await confirmCharge(estimateChatCredits(message), 'chat: "' + message.slice(0, 40) + '"', undefined, 'llm');
+    if (!approved) {
+      chatLog.textContent += (chatLog.textContent ? '\n' : '') +
+        '[Charge declined, timed out, or the dashboard is not listening — check the console for details.]';
+      return;
+    }
   }
 
   chatLog.textContent += (chatLog.textContent ? '\n' : '') + 'You: ' + message;
   input.value = '';
   try {
+    // Always the same endpoint -- /chat decides Mythos-billed vs. standalone by whether
+    // the session cookie is present, the same way /calculate always just takes `lt`. The
+    // client never needs to know or choose which mode it's in.
     const resp = await fetch('/chat', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({lt, message}),
+      body: JSON.stringify({message}),
     });
     const body = await resp.json();
     if (!resp.ok || !body.success) {
@@ -120,10 +227,11 @@ async function sendChat() {
       return;
     }
     chatLog.textContent += '\nAssistant: ' + (body.data.reply || '');
-    document.getElementById('chatCostOut').textContent =
-      'credits charged: ' + (body.data.creditsCharged ?? 'pending') +
-      ' | real Mythos cost: ' + (body.data.mythosCostMicrounits || 'unavailable') +
-      ' microunits (' + (body.data.mythosPricingSource || 'unavailable') + ')';
+    document.getElementById('chatCostOut').textContent = session
+      ? 'credits charged: ' + (body.data.creditsCharged ?? 'pending') +
+        ' | real Mythos cost: ' + (body.data.mythosCostMicrounits || 'unavailable') +
+        ' microunits (' + (body.data.mythosPricingSource || 'unavailable') + ')'
+      : 'standalone mode -- no Mythos credits used';
   } catch {
     chatLog.textContent += '\n[error: Chat request failed]';
   }

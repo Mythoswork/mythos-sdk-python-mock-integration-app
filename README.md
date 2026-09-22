@@ -46,7 +46,7 @@ the launch token, retrieves the identity-bearing session from its server-side ca
 the official async OpenAI client:
 
 ```python
-from mythos_sdk import get_llm_billing_metadata, llm
+from mythos_sdk.llm import get_llm_billing_metadata, llm
 
 client = llm(session, api_key=producer_openai_api_key)
 completion = await client.chat.completions.create(
@@ -75,8 +75,4 @@ Start the app, then bootstrap a listing (one-shot — creates a published web-ap
 .venv/bin/python bootstrap.py
 ```
 
-The SDK dependency is installed from a local `file://` path (see `pyproject.toml`) — after pulling SDK changes, reinstall it into this venv:
-
-```bash
-pip install --force-reinstall --no-deps "mythos-sdk @ file:///Users/glenn-steven-santoso/git/work/mythos-sdk/packages/python"
-```
+The mock app installs `mythos-sdk[fastapi,llm]==0.0.8` from PyPI as declared in `pyproject.toml`.

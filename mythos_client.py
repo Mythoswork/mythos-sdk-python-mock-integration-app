@@ -73,6 +73,7 @@ async def create_web_app_listing(
     cover_image: str,
     thumbnail_image: str | None = None,
     price_credits: int | None = None,
+    producer_margin_pct: float | None = None,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "title": title,
@@ -86,6 +87,8 @@ async def create_web_app_listing(
         payload["thumbnail_image"] = thumbnail_image
     if price_credits is not None:
         payload["price_credits"] = price_credits
+    if producer_margin_pct is not None:
+        payload["producer_margin_pct"] = producer_margin_pct
 
     async with httpx.AsyncClient() as client:
         resp = await client.post(

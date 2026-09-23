@@ -1,5 +1,6 @@
 import os
 import re
+from contextlib import asynccontextmanager
 from dataclasses import asdict
 from pathlib import Path
 from typing import Literal
@@ -51,7 +52,14 @@ SESSION_COOKIE_MAX_AGE_SECONDS = 30 * 60
 
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
 
-app = FastAPI()
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    get_config()
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
 app.include_router(create_handshake_router())
 app.add_api_route(
     "/.well-known/mythos-listing-registered",
@@ -76,6 +84,17 @@ def _public_session(session: MythosSession) -> MythosSession:
     )
 
 
+def _decode_session_cookie(value: str | None) -> MythosSession | None:
+    if not value:
+        return None
+    try:
+        return decode_session(value)
+    except MythosConfigError:
+        raise
+    except Exception:
+        return None
+
+
 _require_launch_token_dep = require_launch_token(resolve_listing_ids=get_listing_ids)
 
 
@@ -94,7 +113,7 @@ async def verify_session_route(
     # new session's row permanently unconsumed (a later meter() call then 409s). So an
     # incoming `lt` is only trusted to match the cookie if it decodes to the same
     # sessionJti; anything else falls through and gets consumed fresh below.
-    existing_session = decode_session(mythos_session) if mythos_session else None
+    existing_session = _decode_session_cookie(mythos_session)
     same_session_as_cookie = existing_session is not None and lt is None
     if existing_session is not None and lt is not None:
         try:
@@ -120,7 +139,7 @@ async def verify_session_route(
         max_age=SESSION_COOKIE_MAX_AGE_SECONDS,
         httponly=True,
         samesite="lax",
-        secure=os.environ.get("ENV") == "production",
+        secure=get_config().cookie_secure,
         path="/",
     )
     return {"success": True, "data": asdict(_public_session(session))}
@@ -182,10 +201,9 @@ async def chat_route(body: ChatBody, mythos_session: str | None = Cookie(default
     # session (from the cookie /verify-session set), llm()'s returned client is routed
     # through the Mythos gateway and billed. Without one, llm()'s fallback returns a
     # plain AsyncOpenAI client instead. Only the model id and billing metadata differ.
-    session = decode_session(mythos_session) if mythos_session else None
-    is_standalone = session is None
-
     try:
+        session = _decode_session_cookie(mythos_session)
+        is_standalone = session is None
         client = llm(
             session,
             api_key=PRODUCER_OPENAI_API_KEY,

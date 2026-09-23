@@ -56,8 +56,9 @@ completion = await client.chat.completions.create(
 billing = get_llm_billing_metadata(completion)
 ```
 
-The gateway observes provider usage, settles the charge, and returns billing metadata. Identity
-credentials are never sent to the browser.
+The gateway observes provider usage, settles the charge, and returns billing metadata. The app
+stores the identity-bearing session in an encrypted HttpOnly cookie; identity credentials are
+never sent to the browser.
 
 ## Setup
 

@@ -15,6 +15,8 @@
   <button onclick="handleStandaloneSubscribe()">Subscribe</button>
 </div>
 
+<p id="sessionError" style="display:none;color:red"></p>
+
 <div id="mainContent" style="display:none">
 <h2>Calculator</h2>
 <pre id="session"></pre>
@@ -98,25 +100,25 @@ function handleStandaloneSubscribe() {
   showMainContent();
 }
 
-const lt = new URLSearchParams(location.search).get('lt');
 let session = null;
-// No `lt` is fine here -- an existing session cookie (from a prior visit) already covers
-// it; /verify-session checks that cookie before ever needing `lt`. Only pass `lt` when
-// it's actually present, since the query string literally sending "null" would otherwise
-// make a valid cookie session look like an invalid launch token server-side.
-const verifyUrl = lt ? '/verify-session?lt=' + encodeURIComponent(lt) : '/verify-session';
-fetch(verifyUrl).then(r => r.json()).then(d => {
-  document.getElementById('session').textContent = 'verify-session: ' + JSON.stringify(d, null, 2);
-  if (d.success) {
-    session = d.data;
+let sessionToken = sessionStorage.getItem('mythosSessionToken');
+fetch('/mythos/session' + location.search, {
+  headers: sessionToken ? {'X-Mythos-Session': sessionToken} : {},
+}).then(r => r.json()).then(d => {
+  document.getElementById('session').textContent = 'mythos session: ' + JSON.stringify(d, null, 2);
+  if (d.success && d.data) {
+    session = d.data.session;
+    sessionToken = d.data.sessionToken;
+    sessionStorage.setItem('mythosSessionToken', sessionToken);
     window.parent.postMessage({ type: 'mythos:handshake' }, '*');
     showMainContent();
-  } else {
-    // Standalone (no Mythos at all): no `lt`, and no session cookie from a prior visit
-    // either. This app's own account gate is all that stands between here and using the
-    // calculator/chat -- there is nothing for Mythos to bypass, because Mythos was never
-    // involved.
+  } else if (d.success && d.data === null) {
+    sessionStorage.removeItem('mythosSessionToken');
     showStandaloneLogin();
+  } else {
+    const error = document.getElementById('sessionError');
+    error.textContent = d.error || 'Session verification failed';
+    error.style.display = '';
   }
 });
 function confirmCharge(credits, reason, timeoutMs, kind) {
@@ -178,7 +180,7 @@ async function calc() {
     standaloneCalculate();
     return;
   }
-  const body = {lt, operation: document.getElementById('op').value,
+  const body = {operation: document.getElementById('op').value,
     a: Number(document.getElementById('a').value), b: Number(document.getElementById('b').value)};
   const approved = await confirmCharge(1, body.operation + '(' + body.a + ', ' + body.b + ')');
   if (!approved) {
@@ -186,7 +188,11 @@ async function calc() {
       'Charge declined, timed out, or the dashboard is not listening — check the console for details.';
     return;
   }
-  const resp = await fetch('/calculate', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+  const resp = await fetch('/calculate', {
+    method:'POST',
+    headers:{'Content-Type':'application/json', ...(sessionToken ? {'X-Mythos-Session': sessionToken} : {})},
+    body: JSON.stringify(body),
+  });
   document.getElementById('out').textContent = JSON.stringify(await resp.json(), null, 2);
 }
 async function sendChat() {
@@ -214,11 +220,11 @@ async function sendChat() {
   input.value = '';
   try {
     // Always the same endpoint -- /chat decides Mythos-billed vs. standalone by whether
-    // the session cookie is present, the same way /calculate always just takes `lt`. The
+    // a Mythos session is available. The
     // client never needs to know or choose which mode it's in.
     const resp = await fetch('/chat', {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      headers: {'Content-Type': 'application/json', ...(sessionToken ? {'X-Mythos-Session': sessionToken} : {})},
       body: JSON.stringify({message}),
     });
     const body = await resp.json();

@@ -11,7 +11,6 @@ class AppConfig:
     test_user_password: str
     producer_openai_api_key: str
     mythos_session_secret: str
-    cookie_secure: bool
 
 
 def _require_env(name: str) -> str:
@@ -19,16 +18,6 @@ def _require_env(name: str) -> str:
     if not value:
         raise RuntimeError(f"Missing required env var: {name}. Copy .env.example to .env.local and fill it in.")
     return value
-
-
-def _bool_env(name: str, default: bool = False) -> bool:
-    value = os.environ.get(name)
-    if value is None:
-        return default
-    normalized = value.strip().lower()
-    if normalized not in {"true", "false"}:
-        raise RuntimeError(f"{name} must be 'true' or 'false'.")
-    return normalized == "true"
 
 
 def get_config() -> AppConfig:
@@ -40,7 +29,6 @@ def get_config() -> AppConfig:
         test_user_password=_require_env("TEST_USER_PASSWORD"),
         producer_openai_api_key=_require_env("PRODUCER_OPENAI_API_KEY"),
         mythos_session_secret=_require_env("MYTHOS_SESSION_SECRET"),
-        cookie_secure=_bool_env("COOKIE_SECURE"),
     )
 
 

@@ -47,7 +47,7 @@
 </ul>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/@mythos-work/sdk@0.2.0/dist/mythos-client.global.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mythos-work/sdk@0.3.0/dist/mythos-client.global.js"></script>
 <script>
 async function upload() {
   const fileInput = document.getElementById('file');
@@ -107,16 +107,6 @@ m.ready.then((s) => {
   if (s.status === 'mythos') { session = s.session; document.getElementById('session').textContent = JSON.stringify(s.session, null, 2); showMainContent(); }
   else if (s.status === 'standalone') showStandaloneLogin();
   else { const e = document.getElementById('sessionError'); e.textContent = (s.error && s.error.message) || 'Session verification failed'; e.style.display = ''; } });
-
-// Chars-per-credit for the confirm-charge modal's reminder amount -- deliberately coarse
-// (not a real token-cost model), matching the Node mockup's lib/pricing.ts. The real LLM
-// cost is only known after the provider responds and is already billed automatically by
-// /chat via the SDK's wallet hold; this number exists purely so the dialog isn't a
-// hardcoded stub -- a longer message reads as "this will cost a bit more."
-function estimateChatCredits(message) {
-  const byLength = Math.ceil(message.length / 40);
-  return Math.min(10, Math.max(1, byLength));
-}
 function standaloneCalculate() {
   const operation = document.getElementById('op').value;
   const a = Number(document.getElementById('a').value);
@@ -164,7 +154,7 @@ async function sendChat() {
   // and is already billed automatically by /chat via the SDK's wallet hold). Skipped
   // entirely in standalone mode (no `session`), same as the calculator button's precedent.
   if (session) {
-    const { approved } = await m.confirmCharge({ credits: estimateChatCredits(message), reason: 'chat: "' + message.slice(0, 40) + '"', kind: 'llm' });
+    const { approved } = await m.confirmCharge({ kind: 'llm', reason: 'chat: "' + message.slice(0, 40) + '"' });
     if (!approved) {
       chatLog.textContent += (chatLog.textContent ? '\n' : '') +
         '[Charge declined, timed out, or the dashboard is not listening — check the console for details.]';

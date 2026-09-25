@@ -7,16 +7,15 @@ Not production code — a disposable dev/QA harness for validating the SDK's lau
 ## What it does
 
 - **Harness routes** (`/`, `/harness/*`): login as a Mythos test user, launch the calculator listing, inspect wallet balance and launch history.
-- **Producer routes** (`/calculator`, `/mythos/session`, `/calculate`, `/chat`): the SDK-integrated side — meters one credit per calculation via `mythos.charge`, and routes LLM inference through `mythos.llm` with observed-cost billing metadata.
+- **Producer routes** (`/calculator`, `/api/mythos/session`, `/calculate`, `/chat`): the SDK-integrated side — meters one credit per calculation via `mythos.charge`, and routes LLM inference through `mythos.llm` with observed-cost billing metadata.
 - **`/.well-known/mythos-handshake`**: liveness check the backend calls before publishing a listing.
 - **`/.well-known/mythos-listing-registered`**: callback the backend POSTs to on listing creation, so the app learns its own dynamic `listing_id` without a manual env var / redeploy.
 
 ## Pre-charge confirmation (required)
 
-Before firing any billable action, gate the client-side call to `/calculate` behind a
-`postMessage` round trip with the Mythos dashboard (`window.parent`), instead of calling it
-unconditionally — the Consumer must explicitly approve every charge. `/calculator`'s page
-script demonstrates this with a `confirmCharge()` helper, wired up unconditionally in `calc()`.
+Before firing any billable action, gate the client-side call to `/calculate` through the
+global browser client's `m.confirmCharge()` method. The SDK owns the `postMessage` protocol,
+session bootstrap, handshake, and cookie/header transport fallback.
 
 Protocol:
 
@@ -80,12 +79,11 @@ Start the app, then bootstrap a listing (one-shot — creates a published web-ap
 .venv/bin/python bootstrap.py
 ```
 
-The mock pins `mythos-sdk[fastapi,llm]==0.1.1`. Until that version is published to PyPI, local
-workspace development can use the adjacent SDK checkout:
+The mock pins `mythos-sdk[fastapi,llm]==0.2.0`. Until that version is published to PyPI,
+`tool.uv.sources` points at the adjacent SDK checkout:
 
 ```bash
-uv sync --frozen
-uv pip install --editable "../mythos-sdk/packages/python[fastapi,llm]"
+uv sync
 ```
 
-After publication, run `uv lock` and `uv sync`; the lockfile should resolve the SDK from PyPI.
+After publication, remove the local source override, then run `uv lock` and `uv sync`; the lockfile should resolve the SDK from PyPI.

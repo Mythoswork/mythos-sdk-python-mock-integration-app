@@ -20,6 +20,16 @@ def _require_env(name: str) -> str:
     return value
 
 
+def _bool_env(name: str, default: bool = False) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    normalized = value.strip().lower()
+    if normalized not in {"true", "false"}:
+        raise RuntimeError(f"{name} must be 'true' or 'false'.")
+    return normalized == "true"
+
+
 def get_config() -> AppConfig:
     return AppConfig(
         mythos_api_url=_require_env("MYTHOS_API_URL"),

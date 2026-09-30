@@ -32,43 +32,10 @@
 <input id="chatInput" type="text" placeholder="Say something...">
 <button onclick="sendChat()">Send</button>
 <pre id="chatCostOut"></pre>
-<hr>
-<h3>Upload file</h3>
-<input id="file" type="file">
-<button onclick="upload()">Upload</button>
-<pre id="uploadOut"></pre>
-<h3>Files in tmp</h3>
-<ul id="fileList">
-{% for name in files %}
-  <li><a href="/download/{{ name }}">{{ name }}</a></li>
-{% else %}
-  <li>No files uploaded yet.</li>
-{% endfor %}
-</ul>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@mythos-work/sdk@0.3.0/dist/mythos-client.global.js"></script>
 <script>
-async function upload() {
-  const fileInput = document.getElementById('file');
-  const uploadOut = document.getElementById('uploadOut');
-  if (!fileInput.files.length) {
-    uploadOut.textContent = 'Choose a file first.';
-    return;
-  }
-  const formData = new FormData();
-  formData.append('file', fileInput.files[0]);
-  const resp = await fetch('/upload', {method: 'POST', body: formData});
-  uploadOut.textContent = JSON.stringify(await resp.json(), null, 2);
-  await refreshFileList();
-}
-async function refreshFileList() {
-  const { data: files } = await fetch('/files').then(r => r.json());
-  const fileList = document.getElementById('fileList');
-  fileList.innerHTML = files.length
-    ? files.map(name => `<li><a href="/download/${encodeURIComponent(name)}">${name}</a></li>`).join('')
-    : '<li>No files uploaded yet.</li>';
-}
 // Fake standalone SaaS credentials -- this is a demo gate only, not real auth.
 const STANDALONE_USERNAME = 'demo';
 const STANDALONE_PASSWORD = 'demo';

@@ -9,8 +9,8 @@ from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).parent / ".env.local")
 
-from fastapi import Depends, FastAPI, File, Header, HTTPException, Request, UploadFile  # noqa: E402
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse  # noqa: E402
+from fastapi import Depends, FastAPI, Header, HTTPException, Request  # noqa: E402
+from fastapi.responses import HTMLResponse, JSONResponse  # noqa: E402
 from fastapi.templating import Jinja2Templates  # noqa: E402
 from openai import AsyncOpenAI  # noqa: E402
 from pydantic import BaseModel  # noqa: E402
@@ -26,7 +26,6 @@ CREDITS_PER_CALCULATION = 1
 MODEL_ID = os.environ.get('ALPHA_MODEL_ID', 'openai/gpt-4o-mini')
 STANDALONE_MODEL_ID = re.sub(r'^openrouter/', '', MODEL_ID)
 STANDALONE_BASE_URL = 'https://openrouter.ai/api/v1'
-TMP_DIR = Path(__file__).parent / "tmp"
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
@@ -183,35 +182,6 @@ async def harness_launch_history_route(bearer_token: str = Depends(_bearer_token
         raise HTTPException(status_code=502, detail=str(e))
 
 
-@app.post("/upload")
-async def upload_route(file: UploadFile = File(...)):
-    TMP_DIR.mkdir(parents=True, exist_ok=True)
-    filename = Path(file.filename or "upload").name
-    dest = TMP_DIR / filename
-    contents = await file.read()
-    dest.write_bytes(contents)
-    return {"success": True, "data": {"filename": filename, "size": len(contents)}}
-
-
-def _list_tmp_files() -> list[str]:
-    if not TMP_DIR.is_dir():
-        return []
-    return sorted(p.name for p in TMP_DIR.iterdir() if p.is_file())
-
-
-@app.get("/files")
-async def list_files_route():
-    return {"success": True, "data": _list_tmp_files()}
-
-
-@app.get("/download/{filename}")
-async def download_file_route(filename: str):
-    dest = (TMP_DIR / filename).resolve()
-    if dest.parent != TMP_DIR.resolve() or not dest.is_file():
-        raise HTTPException(status_code=404, detail="File not found")
-    return FileResponse(dest, filename=dest.name)
-
-
 @app.get("/", response_class=HTMLResponse)
 async def index_page(request: Request):
     config = get_config()
@@ -227,5 +197,4 @@ async def calculator_page(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="calculator.html",
-        context={"files": _list_tmp_files()},
     )

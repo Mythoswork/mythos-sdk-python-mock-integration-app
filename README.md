@@ -7,7 +7,7 @@ Not production code — a disposable dev/QA harness for validating the SDK's lau
 ## What it does
 
 - **Harness routes** (`/`, `/harness/*`): login as a Mythos test user, launch the calculator listing, inspect wallet balance and launch history.
-- **Producer routes** (`/calculator`, `/verify-session`, `/calculate`, `/chat`): the SDK-integrated side — meters one credit per calculation via `report_usage`, and routes LLM inference through `llm` with observed-cost billing metadata.
+- **Producer routes** (`/calculator`, `/mythos/session`, `/calculate`, `/chat`): the SDK-integrated side — meters one credit per calculation via `mythos.charge`, and routes LLM inference through `mythos.llm` with observed-cost billing metadata.
 - **`/.well-known/mythos-handshake`**: liveness check the backend calls before publishing a listing.
 - **`/.well-known/mythos-listing-registered`**: callback the backend POSTs to on listing creation, so the app learns its own dynamic `listing_id` without a manual env var / redeploy.
 
@@ -29,7 +29,7 @@ Protocol:
 { "type": "mythos:confirm-charge-timeout", "requestId": "<uuid>" }
 ```
 
-Fail-closed: the charge is skipped (`/calculate` is never called) if the page isn't embedded,
+Fail-closed: the calculator charge is skipped (`/calculate` is never called) if the page isn't embedded,
 if no matching response arrives within the timeout (default `10000`ms), or if the response is
 `approved: false`. This depends entirely on the Mythos dashboard implementing the
 `mythos:confirm-charge` listener and confirmation UI on its side. There is no opt-out — **any
@@ -41,24 +41,28 @@ implements the listener yourself.
 
 ## LLM inference
 
-LLM inference does not use `report_usage` or a client-supplied credit amount. The server validates
-the launch token, retrieves the identity-bearing session from its server-side cache, and creates
-the official async OpenAI client:
+LLM inference does not use `report_usage` or a client-supplied credit amount. The SDK consumes the
+launch token once, reuses its encrypted HttpOnly session cookie (or the session header fallback),
+and creates the official async OpenAI client for the request:
 
 ```python
-from mythos_sdk.llm import get_llm_billing_metadata, llm
+from mythos_sdk import create_mythos
 
-client = llm(session, api_key=producer_openai_api_key)
+mythos = create_mythos()
+client = await mythos.llm(request, api_key=producer_openai_api_key)
 completion = await client.chat.completions.create(
     model="openai/gpt-4o-mini",
     messages=[{"role": "user", "content": message}],
 )
-billing = get_llm_billing_metadata(completion)
+billing = mythos.billing(completion)
 ```
 
-The gateway observes provider usage, settles the charge, and returns billing metadata. The app
-stores the identity-bearing session in an encrypted HttpOnly cookie; identity credentials are
-never sent to the browser.
+The gateway observes provider usage, settles the charge, and returns billing metadata. The
+`kind="llm"` confirmation is an approval gate only: its rough client-side estimate is not billed.
+The SDK
+stores the identity-bearing session in an encrypted HttpOnly cookie; the browser receives only
+the public session fields. The SDK consumes the launch token once and reuses that session across
+page changes.
 
 ## Setup
 
@@ -76,4 +80,12 @@ Start the app, then bootstrap a listing (one-shot — creates a published web-ap
 .venv/bin/python bootstrap.py
 ```
 
-The mock app installs `mythos-sdk[fastapi,llm]==0.0.8` from PyPI as declared in `pyproject.toml`.
+The mock pins `mythos-sdk[fastapi,llm]==0.1.1`. Until that version is published to PyPI, local
+workspace development can use the adjacent SDK checkout:
+
+```bash
+uv sync --frozen
+uv pip install --editable "../mythos-sdk/packages/python[fastapi,llm]"
+```
+
+After publication, run `uv lock` and `uv sync`; the lockfile should resolve the SDK from PyPI.

@@ -12,27 +12,21 @@ load_dotenv(Path(__file__).parent / ".env.local")
 from fastapi import Depends, FastAPI, Header, HTTPException, Request  # noqa: E402
 from fastapi.responses import HTMLResponse, JSONResponse  # noqa: E402
 from fastapi.templating import Jinja2Templates  # noqa: E402
-from openai import AsyncOpenAI  # noqa: E402
+from openai import APIStatusError, AsyncOpenAI  # noqa: E402
 from pydantic import BaseModel  # noqa: E402
 
 from mythos_sdk import MythosError, create_mythos  # noqa: E402
 from mythos_sdk.logger import log_error  # noqa: E402
 
-from config import get_config, require_listing_id  # noqa: E402
+from config import CREDITS_PER_CALCULATION, get_config, require_listing_id  # noqa: E402
 from listing_ids_store import add_listing_id, get_listing_ids  # noqa: E402
 from mythos_client import get_launch_history, get_wallet, launch_app, login  # noqa: E402
 
-CREDITS_PER_CALCULATION = 1
 MODEL_ID = os.environ.get('ALPHA_MODEL_ID', 'openai/gpt-4o-mini')
 STANDALONE_MODEL_ID = re.sub(r'^openrouter/', '', MODEL_ID)
 STANDALONE_BASE_URL = 'https://openrouter.ai/api/v1'
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 
-# This app's own session cookie -- lets any number of routes share one launch/consume
-# without re-touching Mythos's single-use launch token, matching the Node mockup's
-# lib/session-cookie.ts.
-SESSION_COOKIE_NAME = "mythos_session"
-SESSION_COOKIE_MAX_AGE_SECONDS = 30 * 60
 
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
 
@@ -135,6 +129,15 @@ async def chat_route(body: ChatBody, request: Request):
             {"success": False, "error": str(err), "code": err.code},
             status_code=err.http_status,
         )
+    except APIStatusError as err:
+        # The Mythos gateway answers with OpenAI-shaped errors; mirror the Node mock's mapping so
+        # the browser client can treat SESSION_EXPIRED as an expired session.
+        if err.status_code == 402:
+            return JSONResponse({"success": False, "error": "Insufficient credits", "code": "INSUFFICIENT_FUNDS"}, status_code=402)
+        if err.status_code == 401:
+            return JSONResponse({"success": False, "error": "Mythos session expired", "code": "SESSION_EXPIRED"}, status_code=401)
+        log_error("chat: upstream request failed", err)
+        raise HTTPException(status_code=502, detail="Chat request failed") from err
     except HTTPException:
         raise
     except Exception as err:
@@ -203,4 +206,5 @@ async def calculator_page(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="calculator.html",
+        context={"credits_per_calculation": CREDITS_PER_CALCULATION},
     )

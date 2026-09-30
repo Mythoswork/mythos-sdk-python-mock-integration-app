@@ -34,7 +34,7 @@
 <pre id="chatCostOut"></pre>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/@mythos-work/sdk@0.3.0/dist/mythos-client.global.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mythos-work/sdk@0.4/dist/mythos-client.global.js"></script>
 <script>
 // Fake standalone SaaS credentials -- this is a demo gate only, not real auth.
 const STANDALONE_USERNAME = 'demo';
@@ -95,7 +95,7 @@ async function calc() {
   }
   const body = {operation: document.getElementById('op').value,
     a: Number(document.getElementById('a').value), b: Number(document.getElementById('b').value)};
-  const { approved } = await m.confirmCharge({ credits: 1, reason: body.operation + '(' + body.a + ', ' + body.b + ')' });
+  const { approved } = await m.confirmCharge({ credits: {{ credits_per_calculation }}, reason: body.operation + '(' + body.a + ', ' + body.b + ')' });
   if (!approved) {
     document.getElementById('out').textContent =
       'Charge declined, timed out, or the dashboard is not listening — check the console for details.';
@@ -114,12 +114,9 @@ async function sendChat() {
   const message = input.value.trim();
   if (!message) return;
 
-  // Same confirm-charge modal the calculator button already uses, tagged 'llm' so the
-  // dashboard shows the no-fixed-amount usage-based variant instead of a projected
-  // credit count. The credits number here is a rough, message-length-based reminder, not
-  // a projection of the real LLM cost (that's only known after the provider responds,
-  // and is already billed automatically by /chat via the SDK's wallet hold). Skipped
-  // entirely in standalone mode (no `session`), same as the calculator button's precedent.
+  // Confirm before any Mythos-billed chat. LLM cost is usage-based (known only after the provider
+  // responds, and billed by /chat via the gateway's wallet hold), so the LLM dialog shows no amount.
+  // Skipped in standalone mode (no session).
   if (session) {
     const { approved } = await m.confirmCharge({ kind: 'llm', reason: 'chat: "' + message.slice(0, 40) + '"' });
     if (!approved) {

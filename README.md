@@ -79,11 +79,15 @@ Start the app, then bootstrap a listing (one-shot — creates a published web-ap
 .venv/bin/python bootstrap.py
 ```
 
-The mock pins `mythos-sdk[fastapi,llm]==0.2.0`. Until that version is published to PyPI,
-`tool.uv.sources` points at the adjacent SDK checkout:
+The mock pins `mythos-sdk[fastapi,llm]==0.4.0` from PyPI, and the page loads the matching browser client
+from `cdn.jsdelivr.net/npm/@mythos-work/sdk@0.4`:
 
 ```bash
 uv sync
 ```
 
-After publication, remove the local source override, then run `uv lock` and `uv sync`; the lockfile should resolve the SDK from PyPI.
+To try an unreleased SDK from a sibling checkout, temporarily install it on top (don't commit this):
+
+```bash
+uv pip install -e "../mythos-sdk/packages/python[fastapi,llm]"
+```

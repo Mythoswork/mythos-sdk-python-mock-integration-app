@@ -9,31 +9,24 @@ from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).parent / ".env.local")
 
-from fastapi import Depends, FastAPI, File, Header, HTTPException, Request, UploadFile  # noqa: E402
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse  # noqa: E402
+from fastapi import Depends, FastAPI, Header, HTTPException, Request  # noqa: E402
+from fastapi.responses import HTMLResponse, JSONResponse  # noqa: E402
 from fastapi.templating import Jinja2Templates  # noqa: E402
-from openai import AsyncOpenAI  # noqa: E402
+from openai import APIStatusError, AsyncOpenAI  # noqa: E402
 from pydantic import BaseModel  # noqa: E402
 
 from mythos_sdk import MythosError, create_mythos  # noqa: E402
 from mythos_sdk.logger import log_error  # noqa: E402
 
-from config import get_config, require_listing_id  # noqa: E402
+from config import CREDITS_PER_CALCULATION, get_config, require_listing_id  # noqa: E402
 from listing_ids_store import add_listing_id, get_listing_ids  # noqa: E402
 from mythos_client import get_launch_history, get_wallet, launch_app, login  # noqa: E402
 
-CREDITS_PER_CALCULATION = 1
 MODEL_ID = os.environ.get('ALPHA_MODEL_ID', 'openai/gpt-4o-mini')
 STANDALONE_MODEL_ID = re.sub(r'^openrouter/', '', MODEL_ID)
 STANDALONE_BASE_URL = 'https://openrouter.ai/api/v1'
-TMP_DIR = Path(__file__).parent / "tmp"
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 
-# This app's own session cookie -- lets any number of routes share one launch/consume
-# without re-touching Mythos's single-use launch token, matching the Node mockup's
-# lib/session-cookie.ts.
-SESSION_COOKIE_NAME = "mythos_session"
-SESSION_COOKIE_MAX_AGE_SECONDS = 30 * 60
 
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
 
@@ -136,6 +129,15 @@ async def chat_route(body: ChatBody, request: Request):
             {"success": False, "error": str(err), "code": err.code},
             status_code=err.http_status,
         )
+    except APIStatusError as err:
+        # The Mythos gateway answers with OpenAI-shaped errors; mirror the Node mock's mapping so
+        # the browser client can treat SESSION_EXPIRED as an expired session.
+        if err.status_code == 402:
+            return JSONResponse({"success": False, "error": "Insufficient credits", "code": "INSUFFICIENT_FUNDS"}, status_code=402)
+        if err.status_code == 401:
+            return JSONResponse({"success": False, "error": "Mythos session expired", "code": "SESSION_EXPIRED"}, status_code=401)
+        log_error("chat: upstream request failed", err)
+        raise HTTPException(status_code=502, detail="Chat request failed") from err
     except HTTPException:
         raise
     except Exception as err:
@@ -189,35 +191,6 @@ async def harness_launch_history_route(bearer_token: str = Depends(_bearer_token
         raise HTTPException(status_code=502, detail=str(e))
 
 
-@app.post("/upload")
-async def upload_route(file: UploadFile = File(...)):
-    TMP_DIR.mkdir(parents=True, exist_ok=True)
-    filename = Path(file.filename or "upload").name
-    dest = TMP_DIR / filename
-    contents = await file.read()
-    dest.write_bytes(contents)
-    return {"success": True, "data": {"filename": filename, "size": len(contents)}}
-
-
-def _list_tmp_files() -> list[str]:
-    if not TMP_DIR.is_dir():
-        return []
-    return sorted(p.name for p in TMP_DIR.iterdir() if p.is_file())
-
-
-@app.get("/files")
-async def list_files_route():
-    return {"success": True, "data": _list_tmp_files()}
-
-
-@app.get("/download/{filename}")
-async def download_file_route(filename: str):
-    dest = (TMP_DIR / filename).resolve()
-    if dest.parent != TMP_DIR.resolve() or not dest.is_file():
-        raise HTTPException(status_code=404, detail="File not found")
-    return FileResponse(dest, filename=dest.name)
-
-
 @app.get("/", response_class=HTMLResponse)
 async def index_page(request: Request):
     config = get_config()
@@ -233,5 +206,5 @@ async def calculator_page(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="calculator.html",
-        context={"files": _list_tmp_files()},
+        context={"credits_per_calculation": CREDITS_PER_CALCULATION},
     )

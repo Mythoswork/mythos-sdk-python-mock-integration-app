@@ -1,6 +1,11 @@
 import os
 from dataclasses import dataclass
 
+# Single source of truth for what one calculation costs: the server-side charge (/calculate),
+# the browser confirm dialog (templates/calculator.html) and the listing price (bootstrap.py)
+# must always agree. 10,000 credits = $1, so 100 credits = $0.01.
+CREDITS_PER_CALCULATION = 100
+
 
 @dataclass
 class AppConfig:

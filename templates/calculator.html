@@ -32,42 +32,10 @@
 <input id="chatInput" type="text" placeholder="Say something...">
 <button onclick="sendChat()">Send</button>
 <pre id="chatCostOut"></pre>
-<hr>
-<h3>Upload file</h3>
-<input id="file" type="file">
-<button onclick="upload()">Upload</button>
-<pre id="uploadOut"></pre>
-<h3>Files in tmp</h3>
-<ul id="fileList">
-{% for name in files %}
-  <li><a href="/download/{{ name }}">{{ name }}</a></li>
-{% else %}
-  <li>No files uploaded yet.</li>
-{% endfor %}
-</ul>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/@mythos-work/sdk@0.4/dist/mythos-client.global.js"></script>
 <script>
-async function upload() {
-  const fileInput = document.getElementById('file');
-  const uploadOut = document.getElementById('uploadOut');
-  if (!fileInput.files.length) {
-    uploadOut.textContent = 'Choose a file first.';
-    return;
-  }
-  const formData = new FormData();
-  formData.append('file', fileInput.files[0]);
-  const resp = await fetch('/upload', {method: 'POST', body: formData});
-  uploadOut.textContent = JSON.stringify(await resp.json(), null, 2);
-  await refreshFileList();
-}
-async function refreshFileList() {
-  const { data: files } = await fetch('/files').then(r => r.json());
-  const fileList = document.getElementById('fileList');
-  fileList.innerHTML = files.length
-    ? files.map(name => `<li><a href="/download/${encodeURIComponent(name)}">${name}</a></li>`).join('')
-    : '<li>No files uploaded yet.</li>';
-}
 // Fake standalone SaaS credentials -- this is a demo gate only, not real auth.
 const STANDALONE_USERNAME = 'demo';
 const STANDALONE_PASSWORD = 'demo';
@@ -101,66 +69,11 @@ function handleStandaloneSubscribe() {
 }
 
 let session = null;
-let sessionToken = sessionStorage.getItem('mythosSessionToken');
-fetch('/mythos/session' + location.search, {
-  headers: sessionToken ? {'X-Mythos-Session': sessionToken} : {},
-}).then(r => r.json()).then(d => {
-  document.getElementById('session').textContent = 'mythos session: ' + JSON.stringify(d, null, 2);
-  if (d.success && d.data) {
-    session = d.data.session;
-    sessionToken = d.data.sessionToken;
-    sessionStorage.setItem('mythosSessionToken', sessionToken);
-    window.parent.postMessage({ type: 'mythos:handshake' }, '*');
-    showMainContent();
-  } else if (d.success && d.data === null) {
-    sessionStorage.removeItem('mythosSessionToken');
-    showStandaloneLogin();
-  } else {
-    const error = document.getElementById('sessionError');
-    error.textContent = d.error || 'Session verification failed';
-    error.style.display = '';
-  }
-});
-function confirmCharge(credits, reason, timeoutMs, kind) {
-  timeoutMs = timeoutMs || 10000;
-  kind = kind || 'generic';
-  return new Promise((resolve) => {
-    if (window === window.parent) { resolve(false); return; }
-    const requestId = crypto.randomUUID();
-    let settled = false;
-    const timer = setTimeout(() => {
-      if (settled) return;
-      window.parent.postMessage({ type: 'mythos:confirm-charge-timeout', requestId }, '*');
-      cleanup();
-      resolve(false);
-    }, timeoutMs);
-    function onMessage(event) {
-      if (event.source !== window.parent) return;
-      const data = event.data;
-      if (!data || data.type !== 'mythos:confirm-charge-response' || data.requestId !== requestId) return;
-      cleanup();
-      resolve(!!data.approved);
-    }
-    function cleanup() {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      window.removeEventListener('message', onMessage);
-    }
-    window.addEventListener('message', onMessage);
-    window.parent.postMessage({ type: 'mythos:confirm-charge', requestId, credits, reason, kind }, '*');
-  });
-}
-
-// Chars-per-credit for the confirm-charge modal's reminder amount -- deliberately coarse
-// (not a real token-cost model), matching the Node mockup's lib/pricing.ts. The real LLM
-// cost is only known after the provider responds and is already billed automatically by
-// /chat via the SDK's wallet hold; this number exists purely so the dialog isn't a
-// hardcoded stub -- a longer message reads as "this will cost a bit more."
-function estimateChatCredits(message) {
-  const byLength = Math.ceil(message.length / 40);
-  return Math.min(10, Math.max(1, byLength));
-}
+const m = Mythos.initMythos();
+m.ready.then((s) => {
+  if (s.status === 'mythos') { session = s.session; document.getElementById('session').textContent = JSON.stringify(s.session, null, 2); showMainContent(); }
+  else if (s.status === 'standalone') showStandaloneLogin();
+  else { const e = document.getElementById('sessionError'); e.textContent = (s.error && s.error.message) || 'Session verification failed'; e.style.display = ''; } });
 function standaloneCalculate() {
   const operation = document.getElementById('op').value;
   const a = Number(document.getElementById('a').value);
@@ -182,15 +95,15 @@ async function calc() {
   }
   const body = {operation: document.getElementById('op').value,
     a: Number(document.getElementById('a').value), b: Number(document.getElementById('b').value)};
-  const approved = await confirmCharge(1, body.operation + '(' + body.a + ', ' + body.b + ')');
+  const { approved } = await m.confirmCharge({ credits: {{ credits_per_calculation }}, reason: body.operation + '(' + body.a + ', ' + body.b + ')' });
   if (!approved) {
     document.getElementById('out').textContent =
       'Charge declined, timed out, or the dashboard is not listening — check the console for details.';
     return;
   }
-  const resp = await fetch('/calculate', {
+  const resp = await m.fetch('/calculate', {
     method:'POST',
-    headers:{'Content-Type':'application/json', ...(sessionToken ? {'X-Mythos-Session': sessionToken} : {})},
+    headers:{'Content-Type':'application/json'},
     body: JSON.stringify(body),
   });
   document.getElementById('out').textContent = JSON.stringify(await resp.json(), null, 2);
@@ -201,14 +114,11 @@ async function sendChat() {
   const message = input.value.trim();
   if (!message) return;
 
-  // Same confirm-charge modal the calculator button already uses, tagged 'llm' so the
-  // dashboard shows the no-fixed-amount usage-based variant instead of a projected
-  // credit count. The credits number here is a rough, message-length-based reminder, not
-  // a projection of the real LLM cost (that's only known after the provider responds,
-  // and is already billed automatically by /chat via the SDK's wallet hold). Skipped
-  // entirely in standalone mode (no `session`), same as the calculator button's precedent.
+  // Confirm before any Mythos-billed chat. LLM cost is usage-based (known only after the provider
+  // responds, and billed by /chat via the gateway's wallet hold), so the LLM dialog shows no amount.
+  // Skipped in standalone mode (no session).
   if (session) {
-    const approved = await confirmCharge(estimateChatCredits(message), 'chat: "' + message.slice(0, 40) + '"', undefined, 'llm');
+    const { approved } = await m.confirmCharge({ kind: 'llm', reason: 'chat: "' + message.slice(0, 40) + '"' });
     if (!approved) {
       chatLog.textContent += (chatLog.textContent ? '\n' : '') +
         '[Charge declined, timed out, or the dashboard is not listening — check the console for details.]';
@@ -222,9 +132,9 @@ async function sendChat() {
     // Always the same endpoint -- /chat decides Mythos-billed vs. standalone by whether
     // a Mythos session is available. The
     // client never needs to know or choose which mode it's in.
-    const resp = await fetch('/chat', {
+    const resp = await m.fetch('/chat', {
       method: 'POST',
-      headers: {'Content-Type': 'application/json', ...(sessionToken ? {'X-Mythos-Session': sessionToken} : {})},
+      headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({message}),
     });
     const body = await resp.json();

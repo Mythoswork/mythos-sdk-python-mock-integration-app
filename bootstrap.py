@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 ENV_PATH = Path(__file__).parent / ".env.local"
 load_dotenv(ENV_PATH)
 
-from config import get_config  # noqa: E402
+from config import CREDITS_PER_CALCULATION, get_config  # noqa: E402
 from mythos_client import create_web_app_listing, login  # noqa: E402
 
 
@@ -27,7 +27,7 @@ async def main() -> None:
         launch_url=f"{config.calculator_base_url}/calculator",
         status="published",
         cover_image="https://example.com/calculator-cover.png",
-        price_credits=1,
+        price_credits=CREDITS_PER_CALCULATION,
         producer_margin_pct=100,
     )
 

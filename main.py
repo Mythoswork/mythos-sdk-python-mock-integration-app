@@ -143,60 +143,6 @@ async def chat_route(body: ChatBody, request: Request):
         raise HTTPException(status_code=502, detail="Chat request failed") from err
 
 
-@app.post("/chat")
-async def chat_route(body: ChatBody, mythos_session: str | None = Cookie(default=None)):
-    if not PRODUCER_OPENAI_API_KEY:
-        raise HTTPException(
-            status_code=500,
-            detail="Server misconfigured: PRODUCER_OPENAI_API_KEY not set",
-        )
-    message = body.message.strip()
-    if not message:
-        raise HTTPException(status_code=400, detail="Message is required")
-
-    # Same endpoint either way, matching the Node mockup's /api/chat: with a Mythos
-    # session (from the cookie /verify-session set), llm()'s returned client is routed
-    # through the Mythos gateway and billed. Without one, llm()'s fallback returns a
-    # plain AsyncOpenAI client instead. Only the model id and billing metadata differ.
-    try:
-        session = _decode_session_cookie(mythos_session)
-        is_standalone = session is None
-        client = llm(
-            session,
-            api_key=PRODUCER_OPENAI_API_KEY,
-            fallback=AsyncOpenAI(api_key=PRODUCER_OPENAI_API_KEY, base_url=STANDALONE_BASE_URL),
-        )
-        completion = await client.chat.completions.create(
-            model=STANDALONE_MODEL_ID if is_standalone else MODEL_ID,
-            messages=[{"role": "user", "content": message}],
-            stream=False,
-        )
-        billing = None if is_standalone else get_llm_billing_metadata(completion)
-
-        return {
-            "success": True,
-            "data": {
-                "reply": completion.choices[0].message.content if completion.choices else None,
-                "creditsCharged": billing.get("mythos_charge_credits") if billing else None,
-                "mythosCostMicrounits": billing.get("mythos_cost_microunits") if billing else None,
-                "mythosPricingSource": billing.get("mythos_pricing_source") if billing else None,
-                "billingStatus": billing.get("mythos_billing_status") if billing else None,
-            },
-        }
-    except InsufficientFundsError:
-        raise HTTPException(status_code=402, detail="Insufficient funds")
-    except SessionNotFoundError:
-        raise HTTPException(status_code=404, detail="Session not found")
-    except MythosConfigError:
-        raise HTTPException(status_code=500, detail="Chat service is misconfigured")
-    except (InvalidLaunchTokenError, JOSEError):
-        raise HTTPException(status_code=401, detail="Invalid launch token")
-    except HTTPException:
-        raise
-    except Exception:
-        raise HTTPException(status_code=502, detail="Chat request failed")
-
-
 class LoginBody(BaseModel):
     email: str
     password: str

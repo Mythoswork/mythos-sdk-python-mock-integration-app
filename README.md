@@ -72,6 +72,11 @@ pip install -e .
 cp .env.example .env.local   # fill in MYTHOS_API_URL, TEST_USER_EMAIL, etc.
 ```
 
+Set `MYTHOS_KEY` in `.env.local` to the current key from **Mythos dashboard → Settings → Mythos key**.
+It binds this app to your Producer account so the auto-registration callback only accepts your
+own listings. SDK 0.5.0 warns once if it is unset; the key is required from SDK 0.6.0.
+Keep the key server-side.
+
 Start the app, then bootstrap a listing (one-shot — creates a published web-app listing pointing back at this app and registers it via the callback):
 
 ```bash
@@ -79,7 +84,7 @@ Start the app, then bootstrap a listing (one-shot — creates a published web-ap
 .venv/bin/python bootstrap.py
 ```
 
-The mock pins `mythos-sdk[fastapi,llm]==0.4.0` from PyPI, and the page loads the matching browser client
+The mock pins `mythos-sdk[fastapi,llm]==0.5.0` from PyPI, and the page loads the browser client
 from `cdn.jsdelivr.net/npm/@mythos-work/sdk@0.4`:
 
 ```bash
@@ -91,3 +96,19 @@ To try an unreleased SDK from a sibling checkout, temporarily install it on top 
 ```bash
 uv pip install -e "../mythos-sdk/packages/python[fastapi,llm]"
 ```
+
+Before SDK 0.5.0 is published, use the P1 sibling checkout in this worktree's own `.venv`:
+
+```bash
+uv pip install -e "../mythos-sdk-p1-producer-key/packages/python[fastapi,llm]"
+uv run --no-sync uvicorn main:app
+```
+
+`--no-sync` preserves the editable install instead of resolving the unpublished PyPI pin.
+The project pin remains `==0.5.0`; no permanent local source override is needed.
+
+## Troubleshooting
+
+- `MYTHOS_KEY is malformed`: copy the complete key from the Mythos dashboard into `.env.local` and restart.
+- `PRODUCER_MISMATCH`: the key belongs to another account or was regenerated. Copy the current
+  key from the correct Producer account's dashboard and redeploy.

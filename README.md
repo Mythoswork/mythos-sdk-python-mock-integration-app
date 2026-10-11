@@ -85,7 +85,7 @@ Start the app, then bootstrap a listing (one-shot — creates a published web-ap
 ```
 
 The mock pins `mythos-sdk[fastapi,llm]==0.5.0` from PyPI, and the page loads the browser client
-from `cdn.jsdelivr.net/npm/@mythos-work/sdk@0.4`:
+from `cdn.jsdelivr.net/npm/@mythos-work/sdk@0.5`:
 
 ```bash
 uv sync
@@ -97,15 +97,6 @@ To try an unreleased SDK from a sibling checkout, temporarily install it on top 
 uv pip install -e "../mythos-sdk/packages/python[fastapi,llm]"
 ```
 
-Before SDK 0.5.0 is published, use the P1 sibling checkout in this worktree's own `.venv`:
-
-```bash
-uv pip install -e "../mythos-sdk-p1-producer-key/packages/python[fastapi,llm]"
-uv run --no-sync uvicorn main:app
-```
-
-`--no-sync` preserves the editable install instead of resolving the unpublished PyPI pin.
-The project pin remains `==0.5.0`; no permanent local source override is needed.
 
 ## Troubleshooting
 

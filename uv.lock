@@ -771,23 +771,23 @@ requires-dist = [
     { name = "fastapi", extras = ["standard"], specifier = ">=0.100.0" },
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "jinja2", specifier = ">=3.1.0" },
-    { name = "mythos-sdk", extras = ["fastapi", "llm"], specifier = "==0.5.0" },
+    { name = "mythos-sdk", extras = ["fastapi", "llm"], specifier = "==0.5.1" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
     { name = "uvicorn", specifier = ">=0.30.0" },
 ]
 
 [[package]]
 name = "mythos-sdk"
-version = "0.5.0"
+version = "0.5.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cryptography" },
     { name = "httpx" },
     { name = "python-jose", extra = ["cryptography"] },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/79/58/64bb07cedcfd4bddd10c3c79be57fdbdc0c0ddb76800cc27c994cc388f9b/mythos_sdk-0.5.0.tar.gz", hash = "sha256:e16202303dcec8c2d4766648c80a9525bc15c7a84143ec019972555a62fbf3ad", size = 131664, upload-time = "2026-10-11T16:47:00.511Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/61/51/a324e33355bfe45f593793f212c1a12bf7d42d25234c5e546b1f6fb5434f/mythos_sdk-0.5.1.tar.gz", hash = "sha256:d48f06590943106003912f8c43665a6ab1a120265f435f514035f4e7385d1e62", size = 136448, upload-time = "2026-10-12T16:07:07.876Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/6f/c1/99b33829e40ecfccb9db101dc170da80b0866eb51511a16c9ebfa8f8e18b/mythos_sdk-0.5.0-py3-none-any.whl", hash = "sha256:ec63169aa172212c00773a73fdb24f6c4065887ec0b6d4ef3dcf4d037291a87e", size = 31117, upload-time = "2026-10-11T16:46:58.922Z" },
+    { url = "https://files.pythonhosted.org/packages/2a/42/a172d3a222f615460ed3d1c2615f027051d853bb31b03cbf71de1b47f673/mythos_sdk-0.5.1-py3-none-any.whl", hash = "sha256:242bf557456dd6743fd86c0adb317af33ac7919f2a50b3cde7d844774c6319ed", size = 33706, upload-time = "2026-10-12T16:07:06.461Z" },
 ]
 
 [package.optional-dependencies]

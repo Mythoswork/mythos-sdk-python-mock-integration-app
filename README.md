@@ -7,7 +7,7 @@ Not production code — a disposable dev/QA harness for validating the SDK's lau
 ## What it does
 
 - **Harness routes** (`/`, `/harness/*`): login as a Mythos test user, launch the calculator listing, inspect wallet balance and launch history.
-- **Producer routes** (`/calculator`, `/api/mythos/session`, `/calculate`, `/chat`): the SDK-integrated side — meters one credit per calculation via `mythos.charge`, and routes LLM inference through `mythos.llm` with observed-cost billing metadata.
+- **Producer routes** (`/calculator`, `/api/mythos/session`, `/calculate`, `/chat`): the SDK-integrated side — charges $0.15 per calculation via `mythos.charge`, and routes LLM inference through `mythos.llm` with observed-cost billing metadata.
 - **`/.well-known/mythos-handshake`**: liveness check the backend calls before publishing a listing.
 - **`/.well-known/mythos-listing-registered`**: callback the backend POSTs to on listing creation, so the app learns its own dynamic `listing_id` without a manual env var / redeploy.
 
@@ -16,6 +16,16 @@ Not production code — a disposable dev/QA harness for validating the SDK's lau
 Before firing any billable action, gate the client-side call to `/calculate` through the
 global browser client's `m.confirmCharge()` method. The SDK owns the `postMessage` protocol,
 session bootstrap, handshake, and cookie/header transport fallback.
+
+The popup shows credits, converted from USD using the session rate. Server and browser use the same `USD_PER_CALCULATION` amount:
+
+```python
+meter = await mythos.charge(request, usd=0.15, reason="calculator:add")
+```
+
+```javascript
+const { approved } = await m.confirmCharge({ usd: 0.15, reason: 'add(1, 2)' });
+```
 
 Protocol:
 
@@ -74,18 +84,20 @@ cp .env.example .env.local   # fill in MYTHOS_API_URL, TEST_USER_EMAIL, etc.
 
 Set `MYTHOS_KEY` in `.env.local` to the current key from **Mythos dashboard → Settings → Mythos key**.
 It binds this app to your Producer account so the auto-registration callback only accepts your
-own listings. SDK 0.5.0 warns once if it is unset; the key is required from SDK 0.6.0.
+own listings. The SDK warns once if it is unset; the key will be required in a future release.
 Keep the key server-side.
 
-Start the app, then bootstrap a listing (one-shot — creates a published web-app listing pointing back at this app and registers it via the callback):
+Start the app, then bootstrap a listing (one-shot — creates a draft web-app listing pointing back at this app and registers it via the callback):
 
 ```bash
 .venv/bin/python -m uvicorn main:app --port 8001 --reload --reload-exclude '.venv/*' --reload-exclude '__pycache__/*' --reload-exclude 'data/*'
 .venv/bin/python bootstrap.py
 ```
 
-The mock pins `mythos-sdk[fastapi,llm]==0.5.0` from PyPI, and the page loads the browser client
-from `cdn.jsdelivr.net/npm/@mythos-work/sdk@0.5`:
+Before users can launch the draft, submit it through review from the Verify page in the Mythos dashboard.
+
+The mock pins `mythos-sdk[fastapi,llm]==0.6.0` from PyPI, and the page loads the browser client
+from `cdn.jsdelivr.net/npm/@mythos-work/sdk@0.6`:
 
 ```bash
 uv sync

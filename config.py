@@ -1,10 +1,10 @@
 import os
 from dataclasses import dataclass
 
-# Single source of truth for what one calculation costs: the server-side charge (/calculate),
-# the browser confirm dialog (templates/calculator.html) and the listing price (bootstrap.py)
-# must always agree.
-CREDITS_PER_CALCULATION = 1500
+# Single source of truth for what one calculation costs: the server-side charge (/calculate)
+# and the browser confirm dialog (templates/calculator.html) must always agree.
+USD_PER_CALCULATION = 0.15
+MYTHOS_CLIENT_SCRIPT_URL = os.getenv("MYTHOS_CLIENT_SCRIPT_URL") or "https://cdn.jsdelivr.net/npm/@mythos-work/sdk@0.6/dist/mythos-client.global.js"
 
 
 @dataclass

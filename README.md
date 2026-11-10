@@ -87,12 +87,14 @@ It binds this app to your Producer account so the auto-registration callback onl
 own listings. SDK 0.5.0 warns once if it is unset; the key is required from SDK 0.6.0.
 Keep the key server-side.
 
-Start the app, then bootstrap a listing (one-shot — creates a published web-app listing pointing back at this app and registers it via the callback):
+Start the app, then bootstrap a listing (one-shot — creates a draft web-app listing pointing back at this app and registers it via the callback):
 
 ```bash
 .venv/bin/python -m uvicorn main:app --port 8001 --reload --reload-exclude '.venv/*' --reload-exclude '__pycache__/*' --reload-exclude 'data/*'
 .venv/bin/python bootstrap.py
 ```
+
+Before users can launch the draft, submit it through review from the Verify page in the Mythos dashboard.
 
 The mock pins `mythos-sdk[fastapi,llm]==0.5.0` from PyPI, and the page loads the browser client
 from `cdn.jsdelivr.net/npm/@mythos-work/sdk@0.5`:

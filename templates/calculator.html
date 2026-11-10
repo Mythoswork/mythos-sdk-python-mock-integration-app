@@ -98,7 +98,14 @@ async function calc() {
   }
   const body = {operation: document.getElementById('op').value,
     a: Number(document.getElementById('a').value), b: Number(document.getElementById('b').value)};
-  const { approved } = await m.confirmCharge({ usd: {{ usd_per_calculation }}, reason: body.operation + '(' + body.a + ', ' + body.b + ')' });
+  let approved;
+  try {
+    ({ approved } = await m.confirmCharge({ usd: {{ usd_per_calculation }}, reason: body.operation + '(' + body.a + ', ' + body.b + ')' }));
+  } catch (err) {
+    // e.g. USD_RATE_UNAVAILABLE (503) or INVALID_CHARGE_AMOUNT (400).
+    document.getElementById('out').textContent = err && err.code ? err.code + ': ' + err.message : String(err);
+    return;
+  }
   if (!approved) {
     document.getElementById('out').textContent =
       'Charge declined, timed out, or the dashboard is not listening — check the console for details.';

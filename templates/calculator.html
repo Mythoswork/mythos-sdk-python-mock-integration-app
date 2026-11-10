@@ -19,6 +19,8 @@
 
 <div id="mainContent" style="display:none">
 <h2>Calculator</h2>
+<p>${{ usd_per_calculation }} per calculation</p>
+<p>Credits charged this session: <span id="creditsTotal">0</span></p>
 <pre id="session"></pre>
 <input id="a" type="number" value="2"> <select id="op">
 <option value="add">+</option><option value="subtract">-</option>
@@ -34,7 +36,7 @@
 <pre id="chatCostOut"></pre>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/@mythos-work/sdk@0.5/dist/mythos-client.global.js"></script>
+<script src="{{ mythos_client_script_url }}"></script>
 <script>
 // Fake standalone SaaS credentials -- this is a demo gate only, not real auth.
 const STANDALONE_USERNAME = 'demo';
@@ -69,6 +71,7 @@ function handleStandaloneSubscribe() {
 }
 
 let session = null;
+let creditsChargedTotal = 0;
 const m = Mythos.initMythos();
 m.ready.then((s) => {
   if (s.status === 'mythos') { session = s.session; document.getElementById('session').textContent = JSON.stringify(s.session, null, 2); showMainContent(); }
@@ -95,7 +98,7 @@ async function calc() {
   }
   const body = {operation: document.getElementById('op').value,
     a: Number(document.getElementById('a').value), b: Number(document.getElementById('b').value)};
-  const { approved } = await m.confirmCharge({ credits: {{ credits_per_calculation }}, reason: body.operation + '(' + body.a + ', ' + body.b + ')' });
+  const { approved } = await m.confirmCharge({ usd: {{ usd_per_calculation }}, reason: body.operation + '(' + body.a + ', ' + body.b + ')' });
   if (!approved) {
     document.getElementById('out').textContent =
       'Charge declined, timed out, or the dashboard is not listening — check the console for details.';
@@ -106,7 +109,12 @@ async function calc() {
     headers:{'Content-Type':'application/json'},
     body: JSON.stringify(body),
   });
-  document.getElementById('out').textContent = JSON.stringify(await resp.json(), null, 2);
+  const response = await resp.json();
+  if (response.success && typeof response.data.creditsCharged === 'number') {
+    creditsChargedTotal += response.data.creditsCharged;
+    document.getElementById('creditsTotal').textContent = creditsChargedTotal;
+  }
+  document.getElementById('out').textContent = JSON.stringify(response, null, 2);
 }
 async function sendChat() {
   const input = document.getElementById('chatInput');

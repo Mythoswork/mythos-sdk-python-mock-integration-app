@@ -18,7 +18,7 @@ from pydantic import BaseModel  # noqa: E402
 from mythos_sdk import MythosError, create_mythos  # noqa: E402
 from mythos_sdk.logger import log_error  # noqa: E402
 
-from config import CREDITS_PER_CALCULATION, get_config, require_listing_id  # noqa: E402
+from config import MYTHOS_CLIENT_SCRIPT_URL, USD_PER_CALCULATION, get_config, require_listing_id  # noqa: E402
 from listing_ids_store import add_listing_id, get_listing_ids  # noqa: E402
 from mythos_client import get_launch_history, get_wallet, launch_app, login  # noqa: E402
 
@@ -78,8 +78,8 @@ async def calculate_route(body: CalculateBody, request: Request):
 
     try:
         result = _compute(body.operation, body.a, body.b)
-        await mythos.charge(request, credits=CREDITS_PER_CALCULATION, reason=f"calculator:{body.operation}")
-        return {"success": True, "data": {"result": result, "creditsCharged": CREDITS_PER_CALCULATION}}
+        meter = await mythos.charge(request, usd=USD_PER_CALCULATION, reason=f"calculator:{body.operation}")
+        return {"success": True, "data": {"result": result, "creditsCharged": meter.credits_charged}}
     except MythosError as err:
         return JSONResponse(
             {"success": False, "error": str(err), "code": err.code},
@@ -206,5 +206,5 @@ async def calculator_page(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="calculator.html",
-        context={"credits_per_calculation": CREDITS_PER_CALCULATION},
+        context={"usd_per_calculation": USD_PER_CALCULATION, "mythos_client_script_url": MYTHOS_CLIENT_SCRIPT_URL},
     )

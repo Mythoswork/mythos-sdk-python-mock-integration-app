@@ -7,7 +7,7 @@ Not production code — a disposable dev/QA harness for validating the SDK's lau
 ## What it does
 
 - **Harness routes** (`/`, `/harness/*`): login as a Mythos test user, launch the calculator listing, inspect wallet balance and launch history.
-- **Producer routes** (`/calculator`, `/api/mythos/session`, `/calculate`, `/chat`): the SDK-integrated side — meters one credit per calculation via `mythos.charge`, and routes LLM inference through `mythos.llm` with observed-cost billing metadata.
+- **Producer routes** (`/calculator`, `/api/mythos/session`, `/calculate`, `/chat`): the SDK-integrated side — charges $0.15 per calculation via `mythos.charge`, and routes LLM inference through `mythos.llm` with observed-cost billing metadata.
 - **`/.well-known/mythos-handshake`**: liveness check the backend calls before publishing a listing.
 - **`/.well-known/mythos-listing-registered`**: callback the backend POSTs to on listing creation, so the app learns its own dynamic `listing_id` without a manual env var / redeploy.
 
@@ -16,6 +16,16 @@ Not production code — a disposable dev/QA harness for validating the SDK's lau
 Before firing any billable action, gate the client-side call to `/calculate` through the
 global browser client's `m.confirmCharge()` method. The SDK owns the `postMessage` protocol,
 session bootstrap, handshake, and cookie/header transport fallback.
+
+The popup shows credits, converted from USD using the session rate. Server and browser use the same `USD_PER_CALCULATION` amount:
+
+```python
+meter = await mythos.charge(request, usd=0.15, reason="calculator:add")
+```
+
+```javascript
+const { approved } = await m.confirmCharge({ usd: 0.15, reason: 'add(1, 2)' });
+```
 
 Protocol:
 

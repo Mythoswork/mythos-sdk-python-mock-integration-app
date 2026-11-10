@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 ENV_PATH = Path(__file__).parent / ".env.local"
 load_dotenv(ENV_PATH)
 
-from config import CREDITS_PER_CALCULATION, get_config  # noqa: E402
+from config import get_config  # noqa: E402
 from mythos_client import create_web_app_listing, login  # noqa: E402
 
 
@@ -17,7 +17,7 @@ async def main() -> None:
     print(f"Logging in as {config.test_user_email} against {config.mythos_api_url}...")
     result = await login(config.mythos_api_url, config.test_user_email, config.test_user_password)
 
-    print("Creating web-app listing (status: published)...")
+    print("Creating web-app listing (status: draft); submit it through review on the Verify page before it is live.")
     listing = await create_web_app_listing(
         config.mythos_api_url,
         result.token,
@@ -25,9 +25,9 @@ async def main() -> None:
         description="Python calculator app exercising launch, handshake, consume, and metering.",
         category="Web Development",
         launch_url=f"{config.calculator_base_url}/calculator",
-        status="published",
+        status="draft",
         cover_image="https://example.com/calculator-cover.png",
-        price_credits=CREDITS_PER_CALCULATION,
+        price_credits=1500,  # Listing metadata remains unchanged; calculation charges use USD.
         producer_margin_pct=100,
     )
 

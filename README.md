@@ -84,7 +84,7 @@ cp .env.example .env.local   # fill in MYTHOS_API_URL, TEST_USER_EMAIL, etc.
 
 Set `MYTHOS_KEY` in `.env.local` to the current key from **Mythos dashboard → Settings → Mythos key**.
 It binds this app to your Producer account so the auto-registration callback only accepts your
-own listings. SDK 0.5.0 warns once if it is unset; the key is required from SDK 0.6.0.
+own listings. The SDK warns once if it is unset; the key will be required in a future release.
 Keep the key server-side.
 
 Start the app, then bootstrap a listing (one-shot — creates a draft web-app listing pointing back at this app and registers it via the callback):
@@ -96,8 +96,8 @@ Start the app, then bootstrap a listing (one-shot — creates a draft web-app li
 
 Before users can launch the draft, submit it through review from the Verify page in the Mythos dashboard.
 
-The mock pins `mythos-sdk[fastapi,llm]==0.5.0` from PyPI, and the page loads the browser client
-from `cdn.jsdelivr.net/npm/@mythos-work/sdk@0.5`:
+The mock pins `mythos-sdk[fastapi,llm]==0.6.0` from PyPI, and the page loads the browser client
+from `cdn.jsdelivr.net/npm/@mythos-work/sdk@0.6`:
 
 ```bash
 uv sync
